@@ -145,10 +145,10 @@ void receiveEvent(int bytes_incoming)
   for(int i = 0; i < steps; i++)
   {
 //    REG_PORT_OUTSET0 = PORT_PA23; // ~0.4us mopss 1
-    REG_PORT_OUTSET0 = PORT_PA07; // ~0.4us    mopss 2
+    REG_PORT_OUTSET0 = PORT_PA04; // ~0.4us    mopss 2
     delayMicroseconds(speed);
 //    REG_PORT_OUTCLR0 = PORT_PA23; // ~0.4us mopss 1
-    REG_PORT_OUTCLR0 = PORT_PA07; // ~0.4us  mopss 2
+    REG_PORT_OUTCLR0 = PORT_PA04; // ~0.4us  mopss 2
     delayMicroseconds(speed);
   }
 }
