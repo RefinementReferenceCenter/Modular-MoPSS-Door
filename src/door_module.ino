@@ -32,7 +32,7 @@ void setup()
 
   //Setup stepper driver
   driver1.begin(); //initialize pins and registries
-	driver1.rms_current(200); //set driving current RMS (300max for NEMA 8) // 100
+	driver1.rms_current(220,0.11,1); //set driving current RMS (current RMS, Rsens, hold multiplier) (300max for NEMA 8)
   driver1.stealthChop(1); //enable stealthchopping for quiet runnning
 	driver1.microsteps(microsteps1); //default 256 for quiet running
   driver1.interpolate(1);
