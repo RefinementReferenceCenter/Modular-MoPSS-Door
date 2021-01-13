@@ -42,7 +42,7 @@ void setup()
 	digitalWrite(S_EN1,LOW); //Enable output on drivers
 
   //start I2C on address 16
-  Wire.begin(0x11); //atsamd cant multimaster
+  Wire.begin(0x10); //atsamd cant multimaster
   Wire.onReceive(receiveEvent); //what to do when/with data received
 }
 
