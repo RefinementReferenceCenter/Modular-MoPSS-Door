@@ -58,18 +58,30 @@ const uint8_t S2_CS		=	1;
 const uint8_t S2_microsteps = 32;
 
 //IR Sensors
-const uint8_t IR_top = A3;
-const uint8_t IR_upper = A5;
+const uint8_t IR_top = A2;
+const uint8_t IR_upper = 9;
 const uint8_t IR_middle = A4;
-const uint8_t IR_lower = 9;
-const uint8_t IR_bottom = A2;
+const uint8_t IR_lower = A5;
+const uint8_t IR_bottom = A3;
 
 const uint8_t IR_barrier_rx = A1;
 const uint8_t IR_barrier_tx = A0;
 
+const uint8_t IR_all[7] = {IR_top, IR_upper, IR_middle, IR_lower, IR_bottom, IR_barrier_rx, IR_barrier_tx};
+
 //LEDs
 const uint8_t LED1 = 7;
 const uint8_t LED2 = 5;
+
+uint8_t closedoor = 1;
+uint32_t move_time1;
+
+uint32_t topup_time;
+uint32_t upmid_time;
+uint32_t midlow_time;
+uint32_t lowbot_time;
+
+uint32_t move_interval_times[4];
 
 //34uS minimum delay
 //float b = 100000/microsteps1;
@@ -87,7 +99,7 @@ void setup()
 {
   //Set up RGB LED on board, and turn it off
   strip.begin(); //Initialize pins for output
-  strip.show();  //Turn all LEDs off ASAP
+  strip.show();  //Turn dotstar LED off
 
   //while(!Serial);
   
@@ -107,18 +119,18 @@ void setup()
   
   //Setup stepper drivers
   driver1.begin(); //initialize pins and registries
-	driver1.rms_current(100,0.11,0.5); //set driving current RMS (current RMS, Rsens, hold multiplier) (300max for NEMA 8)
+	driver1.rms_current(80,0.11,0.4); //set driving current RMS (current RMS, Rsens, hold multiplier) (300max for NEMA 8)
   driver1.stealthChop(1); //enable stealthchopping for quiet runnning
 	driver1.microsteps(S1_microsteps); //default 256 for quiet running
   driver1.interpolate(1);
   driver1.double_edge_step(1);
 
   driver2.begin(); //initialize pins and registries
-	driver2.rms_current(100,0.11,0.5); //set driving current RMS (current RMS, Rsens, hold multiplier) (300max for NEMA 8)
+	driver2.rms_current(80,0.11,0.4); //set driving current RMS (current RMS, Rsens, hold multiplier) (300max for NEMA 8)
   driver2.stealthChop(1); //enable stealthchopping for quiet runnning
 	driver2.microsteps(S2_microsteps); //default 256 for quiet running
   driver2.interpolate(1);
-  driver2.double_edge_step(1);
+  driver2.double_edge_step(1); //step on rising and falling edge
 
 	digitalWrite(S1_EN,LOW); //Enable output on drivers
   digitalWrite(S2_EN,LOW); //Enable output on drivers
@@ -126,10 +138,18 @@ void setup()
   //start I2C on address 16
   Wire.begin(0x10); //atsamd cant multimaster
   Wire.onReceive(receiveEvent); //what to do when/with data received
+  
+  //----- calibrate movement timings
+  //open first
+  opensimple();
+  calibrate();
+  delay(1000);
 }
 
 void loop()
 {
+  // digitalWrite(LED1,HIGH);
+  //
   // Serial.print("IRs: ");
   // Serial.print(digitalRead(IR_top));
   // Serial.print("-");
@@ -144,15 +164,206 @@ void loop()
   // Serial.print(digitalRead(IR_barrier_rx));
   // Serial.print("-");
   // Serial.println(digitalRead(IR_barrier_tx));
+  // //delay(1000);
+  // digitalWrite(LED1,LOW);
+  
+
+  
+  //-----
+  
+  opensimple();
+  delay(1000);
+  
+  closefancy(IR_all[0],IR_all[1]);
+  // uint8_t closing = 1;
+  // uint8_t lower_door = 1;
+  // uint32_t move_time;
+  //
+  // while(closing)
+  // {
+  //   //lower door from start to stop
+  //   move_time = millis();
+  //   digitalWrite(S1_dir, 1);
+  //   while((digitalRead(IR_upper) == 0) && lower_door)
+  //   {
+  //     if(millis() - move_time < 1000)
+  //     {
+  //       move();
+  //     }
+  //     else
+  //     {
+  //       lower_door = 0;
+  //       //delay(1000); //wait?
+  //     }
+  //   }
+  //   //move up to reset if door doesn't reach target within time
+  //   digitalWrite(S1_dir, 0);
+  //   while((digitalRead(IR_top) == 1) && !lower_door)
+  //   {
+  //     move();
+  //   }
+  //   //if lower_door true, move finished, else door moved up, try again
+  //   if(lower_door)
+  //   {
+  //     closing = 0;
+  //     digitalWrite(LED1,1);
+  //     delay(250);
+  //     digitalWrite(LED1,0);
+  //   }
+  //   lower_door = 1;
+  // }
+  
+  
+  
+  
+  delay(1000);
+  //-----
+
   
 }
 
+//##############################################################################
+//#####   F U N C T I O N S   ##################################################
+//##############################################################################
+
+
+//close with timing
+void closefancy(uint8_t IR_start, uint8_t IR_stop)
+{
+  uint8_t closing = 1;
+  uint8_t lower_door = 1;
+  uint32_t move_time;
+  
+  while(closing)
+  {
+    //lower door from start to stop
+    move_time = millis();
+    digitalWrite(S1_dir, 1);
+    while((digitalRead(IR_stop) == 0) && lower_door)
+    {
+      if(millis() - move_time < move_interval_times[0] * 1.2)
+      {
+        move();
+      }
+      else
+      {
+        lower_door = 0;
+        //delay(1000); //wait?
+      }
+    }
+    //move up to reset if door doesn't reach target within time
+    digitalWrite(S1_dir, 0);
+    while((digitalRead(IR_start) == 1) && !lower_door)
+    {
+      move();
+    }
+    //if lower_door true, move finished, else door moved up, try again
+    if(lower_door)
+    {
+      closing = 0;
+    }
+    lower_door = 1;
+  }
+}
+
+//------------------------------------------------------------------------------
+void opensimple()
+{
+  digitalWrite(S1_dir, 0);
+  while(digitalRead(IR_top))
+  {
+    REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
+    delayMicroseconds(500);
+    REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
+    delayMicroseconds(500);
+  }
+}
+
+void closesimple()
+{
+  digitalWrite(S1_dir, 1);
+  while(digitalRead(IR_bottom))
+  {
+    REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
+    delayMicroseconds(500);
+    REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
+    delayMicroseconds(500);
+  }
+}
+
+//------------------------------------------------------------------------------
+void calibrate()
+{
+  //now move down
+  digitalWrite(S1_dir, 1);
+  move_time1 = millis();
+  while(digitalRead(IR_upper) == 0)
+  {
+    REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
+    delayMicroseconds(500);
+    REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
+    delayMicroseconds(500);
+  }
+  move_interval_times[0] = millis() - move_time1;
+  delay(200);
+
+  move_time1 = millis();
+  while(digitalRead(IR_middle) == 0)
+  {
+    REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
+    delayMicroseconds(500);
+    REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
+    delayMicroseconds(500);
+  }
+  move_interval_times[1] = millis() - move_time1;
+  delay(200);
+  
+  move_time1 = millis();
+  while(digitalRead(IR_lower) == 0)
+  {
+    REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
+    delayMicroseconds(500);
+    REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
+    delayMicroseconds(500);
+  }
+  move_interval_times[2] = millis() - move_time1;
+  delay(200);
+  
+  move_time1 = millis();
+  while(digitalRead(IR_bottom) == 0)
+  {
+    REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
+    delayMicroseconds(500);
+    REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
+    delayMicroseconds(500);
+  }
+  move_interval_times[3] = millis() - move_time1;
+  
+  Serial.print(move_interval_times[0]);
+  Serial.print(" ");
+  Serial.print(move_interval_times[1]);
+  Serial.print(" ");
+  Serial.print(move_interval_times[2]);
+  Serial.print(" ");
+  Serial.println(move_interval_times[3]);
+}
+
+//-----
+void move()
+{
+  REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
+  delayMicroseconds(500);
+  REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
+  delayMicroseconds(500);
+}
+
 //I2C receive instructions
+
 void receiveEvent(int bytes_incoming)
 {
   uint8_t inputbuffer[7] = {0,0,0,0,0,0,0};
   uint8_t stepper;
-  uint32_t steps = 0;
+  int32_t steps = 0;
   uint8_t dir;
   uint8_t speed;
   
