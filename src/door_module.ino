@@ -74,7 +74,6 @@ const uint8_t LED1 = 7;
 const uint8_t LED2 = 5;
 
 uint8_t closedoor = 1;
-uint32_t move_time1;
 
 uint32_t topup_time;
 uint32_t upmid_time;
@@ -174,7 +173,7 @@ void loop()
   opensimple();
   delay(1000);
   
-  closefancy(IR_all[0],IR_all[1]);
+  closefancy(0,4); //start, stop
   // uint8_t closing = 1;
   // uint8_t lower_door = 1;
   // uint32_t move_time;
@@ -228,42 +227,64 @@ void loop()
 
 
 //close with timing
-void closefancy(uint8_t IR_start, uint8_t IR_stop)
+void closefancy(uint8_t start, uint8_t stop)
 {
-  uint8_t closing = 1;
+  uint8_t closing;
   uint8_t lower_door = 1;
   uint32_t move_time;
+//  uint32_t total_move_time = 0;
+//  steps = stop - start;
   
-  while(closing)
+  //calculate total move time
+  // for(int i = start; i < stop; i++)
+  // {
+  //   total_move_time += move_interval_times[i];
+  // }
+  
+  uint8_t k = 0;
+
+  for(int i = start; i < stop; i++)
   {
-    //lower door from start to stop
-    move_time = millis();
-    digitalWrite(S1_dir, 1);
-    while((digitalRead(IR_stop) == 0) && lower_door)
+    //close step by step with feedback
+    closing = 1;
+    while(closing)
     {
-      if(millis() - move_time < move_interval_times[0] * 1.2)
+      //lower door from start to stop
+      move_time = millis();
+      digitalWrite(S1_dir, 1); //move down
+      while((digitalRead(IR_all[i+1]) == 0) && lower_door)
+      {
+        if((millis() - move_time) < (move_interval_times[i] * 1.2))
+        {
+          move();
+          if(k==50){
+            Serial.println(move_time);
+            k=0;}
+          else{k++;}
+        }
+        else
+        {
+          lower_door = 0;
+          //delay(1000); //wait?
+        }
+      }
+      //move up to reset if door doesn't reach target within time
+      //Problem?: If door is already above sensor, it will start moving down again, potentially
+      //unravelling the string - solution?: always move all the way up
+      digitalWrite(S1_dir, 0);
+      while((digitalRead(IR_all[i]) == 1) && !lower_door)
       {
         move();
       }
-      else
+      //if lower_door true, move finished, else door moved up, try again
+      if(lower_door)
       {
-        lower_door = 0;
-        //delay(1000); //wait?
+        closing = 0;
       }
+      lower_door = 1;
     }
-    //move up to reset if door doesn't reach target within time
-    digitalWrite(S1_dir, 0);
-    while((digitalRead(IR_start) == 1) && !lower_door)
-    {
-      move();
-    }
-    //if lower_door true, move finished, else door moved up, try again
-    if(lower_door)
-    {
-      closing = 0;
-    }
-    lower_door = 1;
   }
+  
 }
 
 //------------------------------------------------------------------------------
@@ -296,7 +317,7 @@ void calibrate()
 {
   //now move down
   digitalWrite(S1_dir, 1);
-  move_time1 = millis();
+  uint32_t move_time = millis();
   while(digitalRead(IR_upper) == 0)
   {
     REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
@@ -304,10 +325,10 @@ void calibrate()
     REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
     delayMicroseconds(500);
   }
-  move_interval_times[0] = millis() - move_time1;
+  move_interval_times[0] = millis() - move_time;
   delay(200);
 
-  move_time1 = millis();
+  move_time = millis();
   while(digitalRead(IR_middle) == 0)
   {
     REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
@@ -315,10 +336,10 @@ void calibrate()
     REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
     delayMicroseconds(500);
   }
-  move_interval_times[1] = millis() - move_time1;
+  move_interval_times[1] = millis() - move_time;
   delay(200);
   
-  move_time1 = millis();
+  move_time = millis();
   while(digitalRead(IR_lower) == 0)
   {
     REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
@@ -326,10 +347,10 @@ void calibrate()
     REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
     delayMicroseconds(500);
   }
-  move_interval_times[2] = millis() - move_time1;
+  move_interval_times[2] = millis() - move_time;
   delay(200);
   
-  move_time1 = millis();
+  move_time = millis();
   while(digitalRead(IR_bottom) == 0)
   {
     REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
@@ -337,7 +358,7 @@ void calibrate()
     REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
     delayMicroseconds(500);
   }
-  move_interval_times[3] = millis() - move_time1;
+  move_interval_times[3] = millis() - move_time;
   
   Serial.print(move_interval_times[0]);
   Serial.print(" ");
