@@ -174,47 +174,7 @@ void loop()
   delay(1000);
   
   closefancy(0,4); //start, stop
-  // uint8_t closing = 1;
-  // uint8_t lower_door = 1;
-  // uint32_t move_time;
-  //
-  // while(closing)
-  // {
-  //   //lower door from start to stop
-  //   move_time = millis();
-  //   digitalWrite(S1_dir, 1);
-  //   while((digitalRead(IR_upper) == 0) && lower_door)
-  //   {
-  //     if(millis() - move_time < 1000)
-  //     {
-  //       move();
-  //     }
-  //     else
-  //     {
-  //       lower_door = 0;
-  //       //delay(1000); //wait?
-  //     }
-  //   }
-  //   //move up to reset if door doesn't reach target within time
-  //   digitalWrite(S1_dir, 0);
-  //   while((digitalRead(IR_top) == 1) && !lower_door)
-  //   {
-  //     move();
-  //   }
-  //   //if lower_door true, move finished, else door moved up, try again
-  //   if(lower_door)
-  //   {
-  //     closing = 0;
-  //     digitalWrite(LED1,1);
-  //     delay(250);
-  //     digitalWrite(LED1,0);
-  //   }
-  //   lower_door = 1;
-  // }
-  
-  
-  
-  
+
   delay(1000);
   //-----
 
@@ -232,9 +192,7 @@ void closefancy(uint8_t start, uint8_t stop)
   uint8_t closing;
   uint8_t lower_door = 1;
   uint32_t move_time;
-//  uint32_t total_move_time = 0;
-//  steps = stop - start;
-  
+
   //calculate total move time
   // for(int i = start; i < stop; i++)
   // {
@@ -250,17 +208,13 @@ void closefancy(uint8_t start, uint8_t stop)
     while(closing)
     {
       //lower door from start to stop
-      move_time = millis();
       digitalWrite(S1_dir, 1); //move down
+      move_time = millis();
       while((digitalRead(IR_all[i+1]) == 0) && lower_door)
       {
         if((millis() - move_time) < (move_interval_times[i] * 1.2))
         {
           move();
-          if(k==50){
-            Serial.println(move_time);
-            k=0;}
-          else{k++;}
         }
         else
         {
@@ -269,10 +223,14 @@ void closefancy(uint8_t start, uint8_t stop)
         }
       }
       //move up to reset if door doesn't reach target within time
-      //Problem?: If door is already above sensor, it will start moving down again, potentially
-      //unravelling the string - solution?: always move all the way up
+      //Problem: If door is already above sensor, it will start moving down again, potentially
+      //unravelling the string
+      //solution 1: always move all the way up
+      //solution 2: use movement timing <- now
       digitalWrite(S1_dir, 0);
-      while((digitalRead(IR_all[i]) == 1) && !lower_door)
+      move_time = millis();
+      //even if IR is already unblocked (mouse lifts door up) move back a bit to prevent string from uncurling
+      while(((digitalRead(IR_all[i]) == 1) || ((millis() - move_time) < (move_interval_times[i] * 1.1))) && !lower_door)
       {
         move();
       }
