@@ -50,12 +50,15 @@ const uint8_t S1_EN		=	2;
 const uint8_t S1_CS		=	3;
 const uint8_t S1_microsteps = 32;
 
+uint16_t S1_pulsetime = 200; //global speed, needed for calibration
+
 //Stepper 2
 const uint8_t S2_dir	=	10;
 const uint8_t S2_step	=	11; //port PA16
 const uint8_t S2_EN		=	12;
 const uint8_t S2_CS		=	1;
 const uint8_t S2_microsteps = 32;
+
 
 //IR Sensors
 const uint8_t IR_top = A2;
@@ -68,6 +71,17 @@ const uint8_t IR_barrier_rx = A1;
 const uint8_t IR_barrier_tx = A0;
 
 const uint8_t IR_all[7] = {IR_top, IR_upper, IR_middle, IR_lower, IR_bottom, IR_barrier_rx, IR_barrier_tx};
+
+//to improve function readability
+const uint8_t top = 0;
+const uint8_t upper = 1;
+const uint8_t middle = 2;
+const uint8_t lower = 3;
+const uint8_t bottom = 4;
+
+const uint8_t up = 0;
+const uint8_t down = 1;
+
 
 //LEDs
 const uint8_t LED1 = 7;
@@ -140,8 +154,8 @@ void setup()
   
   //----- calibrate movement timings
   //open first
-  opensimple();
-  calibrate();
+  movesimple(up,top,200);
+  calibrate(S1_pulsetime);
   delay(1000);
 }
 
@@ -170,10 +184,12 @@ void loop()
   
   //-----
   
-  opensimple();
+  //opensimple(200);
+  movesimple(up,top,200);
+  
   delay(1000);
   
-  closefancy(0,4); //start, stop
+  closefancy(top,bottom,S1_pulsetime); //start, stop
 
   delay(1000);
   //-----
@@ -185,9 +201,8 @@ void loop()
 //#####   F U N C T I O N S   ##################################################
 //##############################################################################
 
-
-//close with timing
-void closefancy(uint8_t start, uint8_t stop)
+//close step by step with timing and feedback ----------------------------------
+void closefancy(uint8_t start, uint8_t stop, uint16_t pulsetime)
 {
   uint8_t closing;
   uint8_t lower_door = 1;
@@ -199,8 +214,7 @@ void closefancy(uint8_t start, uint8_t stop)
   //   total_move_time += move_interval_times[i];
   // }
   
-  uint8_t k = 0;
-
+  //move through all IR barrier intervals step by step  
   for(int i = start; i < stop; i++)
   {
     //close step by step with feedback
@@ -208,18 +222,18 @@ void closefancy(uint8_t start, uint8_t stop)
     while(closing)
     {
       //lower door from start to stop
-      digitalWrite(S1_dir, 1); //move down
+      digitalWrite(S1_dir, down); //move down
       move_time = millis();
       while((digitalRead(IR_all[i+1]) == 0) && lower_door)
       {
         if((millis() - move_time) < (move_interval_times[i] * 1.2))
         {
-          move();
+          move(pulsetime);
         }
         else
         {
           lower_door = 0;
-          //delay(1000); //wait?
+          //delay(1000); //wait before moving up again?
         }
       }
       //move up to reset if door doesn't reach target within time
@@ -227,12 +241,12 @@ void closefancy(uint8_t start, uint8_t stop)
       //unravelling the string
       //solution 1: always move all the way up
       //solution 2: use movement timing <- now
-      digitalWrite(S1_dir, 0);
+      digitalWrite(S1_dir, up); //move up
       move_time = millis();
       //even if IR is already unblocked (mouse lifts door up) move back a bit to prevent string from uncurling
       while(((digitalRead(IR_all[i]) == 1) || ((millis() - move_time) < (move_interval_times[i] * 1.1))) && !lower_door)
       {
-        move();
+        move(pulsetime);
       }
       //if lower_door true, move finished, else door moved up, try again
       if(lower_door)
@@ -242,98 +256,84 @@ void closefancy(uint8_t start, uint8_t stop)
       lower_door = 1;
     }
   }
-  
 }
 
 //------------------------------------------------------------------------------
-void opensimple()
+void movesimple(uint8_t direction, uint8_t target, uint16_t pulsetime)
 {
-  digitalWrite(S1_dir, 0);
-  while(digitalRead(IR_top))
+  digitalWrite(S1_dir, direction); //0 open, 1 close
+  //
+  while(digitalRead(IR_all[target]) ^ direction)
   {
-    REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
-    delayMicroseconds(500);
-    REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
-    delayMicroseconds(500);
-  }
-}
-
-void closesimple()
-{
-  digitalWrite(S1_dir, 1);
-  while(digitalRead(IR_bottom))
-  {
-    REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
-    delayMicroseconds(500);
-    REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
-    delayMicroseconds(500);
+    move(pulsetime);
   }
 }
 
 //------------------------------------------------------------------------------
-void calibrate()
+void calibrate(uint16_t pulsetime)
 {
+  movesimple(up, top, pulsetime);
   //now move down
-  digitalWrite(S1_dir, 1);
+  digitalWrite(S1_dir, down);
   uint32_t move_time = millis();
   while(digitalRead(IR_upper) == 0)
   {
     REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
-    delayMicroseconds(500);
+    delayMicroseconds(pulsetime);
     REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
-    delayMicroseconds(500);
+    delayMicroseconds(pulsetime);
   }
   move_interval_times[0] = millis() - move_time;
-  delay(200);
+  delay(100);
 
   move_time = millis();
   while(digitalRead(IR_middle) == 0)
   {
     REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
-    delayMicroseconds(500);
+    delayMicroseconds(pulsetime);
     REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
-    delayMicroseconds(500);
+    delayMicroseconds(pulsetime);
   }
   move_interval_times[1] = millis() - move_time;
-  delay(200);
+  delay(100);
   
   move_time = millis();
   while(digitalRead(IR_lower) == 0)
   {
     REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
-    delayMicroseconds(500);
+    delayMicroseconds(pulsetime);
     REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
-    delayMicroseconds(500);
+    delayMicroseconds(pulsetime);
   }
   move_interval_times[2] = millis() - move_time;
-  delay(200);
+  delay(100);
   
   move_time = millis();
   while(digitalRead(IR_bottom) == 0)
   {
     REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
-    delayMicroseconds(500);
+    delayMicroseconds(pulsetime);
     REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
-    delayMicroseconds(500);
+    delayMicroseconds(pulsetime);
   }
   move_interval_times[3] = millis() - move_time;
   
-  Serial.print(move_interval_times[0]);
-  Serial.print(" ");
-  Serial.print(move_interval_times[1]);
-  Serial.print(" ");
-  Serial.print(move_interval_times[2]);
-  Serial.print(" ");
-  Serial.println(move_interval_times[3]);
+  // Serial.print(move_interval_times[0]);
+  // Serial.print(" ");
+  // Serial.print(move_interval_times[1]);
+  // Serial.print(" ");
+  // Serial.print(move_interval_times[2]);
+  // Serial.print(" ");
+  // Serial.println(move_interval_times[3]);
 }
 
-//-----
-void move()
+//------------------------------------------------------------------------------
+void move(uint16_t pulsetime)
 {
   REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
-  delayMicroseconds(500);
+  delayMicroseconds(pulsetime);
   REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
-  delayMicroseconds(500);
+  delayMicroseconds(pulsetime);
 }
 
 //I2C receive instructions
