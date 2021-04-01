@@ -43,6 +43,8 @@ D23- I2C SCL
 #include <TMC2130Stepper.h>
 #include <Adafruit_DotStar.h>
 
+uint8_t sendbuffer[10]; //buffer for sending data over I2C
+
 //Stepper 1
 const uint8_t S1_dir	=	0;
 const uint8_t S1_step	=	4; //port PA08
@@ -50,7 +52,7 @@ const uint8_t S1_EN		=	2;
 const uint8_t S1_CS		=	3;
 const uint8_t S1_microsteps = 32;
 
-uint16_t S1_pulsetime = 200; //global speed, needed for calibration
+uint16_t S1_pulsetime = 250; //global speed, needed for calibration
 
 //Stepper 2
 const uint8_t S2_dir	=	10;
@@ -58,7 +60,6 @@ const uint8_t S2_step	=	11; //port PA16
 const uint8_t S2_EN		=	12;
 const uint8_t S2_CS		=	1;
 const uint8_t S2_microsteps = 32;
-
 
 //IR Sensors
 const uint8_t IR_top = A2;
@@ -81,7 +82,6 @@ const uint8_t bottom = 4;
 
 const uint8_t up = 0;
 const uint8_t down = 1;
-
 
 //LEDs
 const uint8_t LED1 = 7;
@@ -125,6 +125,10 @@ void setup()
   
   pinMode(IR_barrier_rx,INPUT);
   pinMode(IR_barrier_tx,INPUT);
+  
+  //setup Interrupts
+  attachInterrupt(digitalPinToInterrupt(IR_barrier_rx), IR_barrier_ISR, HIGH); //IR stepper side
+  attachInterrupt(digitalPinToInterrupt(IR_barrier_tx), IR_barrier_ISR, HIGH); //IR stepper side
   
   //Setup LEDs
   pinMode(LED1,OUTPUT);
@@ -180,12 +184,12 @@ void loop()
   // //delay(1000);
   // digitalWrite(LED1,LOW);
   
-
+  
   
   //-----
   
   //opensimple(200);
-  movesimple(up,top,200);
+  movesimple(up,top,S1_pulsetime);
   
   delay(1000);
   
@@ -214,7 +218,7 @@ void closefancy(uint8_t start, uint8_t stop, uint16_t pulsetime)
   //   total_move_time += move_interval_times[i];
   // }
   
-  //move through all IR barrier intervals step by step  
+  //move through all IR barrier intervals step by step
   for(int i = start; i < stop; i++)
   {
     //close step by step with feedback
@@ -317,6 +321,9 @@ void calibrate(uint16_t pulsetime)
     delayMicroseconds(pulsetime);
   }
   move_interval_times[3] = millis() - move_time;
+  delay(100);
+  
+  movesimple(up, top, pulsetime);
   
   // Serial.print(move_interval_times[0]);
   // Serial.print(" ");
@@ -336,8 +343,35 @@ void move(uint16_t pulsetime)
   delayMicroseconds(pulsetime);
 }
 
-//I2C receive instructions
+void IR_barrier_ISR()
+{
+  //pause everything, wait for barrier to clear
+  while(digitalRead(IR_barrier_rx) || digitalRead(IR_barrier_tx))
+  {
+    if(digitalRead(IR_barrier_rx))
+    {
+      digitalWrite(LED1,HIGH);
+    }
+    else
+    {
+      digitalWrite(LED1,LOW);
+    }
+    
+    if(digitalRead(IR_barrier_tx))
+    {
+      digitalWrite(LED2,HIGH);
+    }
+    else
+    {
+      digitalWrite(LED2,LOW);
+    }
+  }
+  digitalWrite(LED1,LOW);
+  digitalWrite(LED2,LOW);
+}
 
+
+//I2C receive instructions
 void receiveEvent(int bytes_incoming)
 {
   uint8_t inputbuffer[7] = {0,0,0,0,0,0,0};
@@ -346,50 +380,119 @@ void receiveEvent(int bytes_incoming)
   uint8_t dir;
   uint8_t speed;
   
+  uint8_t option;
+  
   //collect bytes from I2C
   for(uint8_t i = 0; i < bytes_incoming; i++)
   {
-    byte c = Wire.read();
+    uint8_t c = Wire.read();
     inputbuffer[i] = c;
   }
   
-  //create 32bit variable from 4 bytes
-  steps = steps | inputbuffer[3];
-  steps = (steps << 8) | inputbuffer[2];
-  steps = (steps << 8) | inputbuffer[1];
-  steps = (steps << 8) | inputbuffer[0];
-
-  dir = inputbuffer[4];
-  speed = inputbuffer[5];
-  stepper = inputbuffer[6];
+  //----- process received data -----
+  option = inputbuffer[0];
+  
+  if(option == 0) //set config
+  {
+    //write config for various door functions
+    
+    
+  }
+  
+  if(option == 1) //calibrate
+  {
+    S1_pulsetime = S1_pulsetime | inputbuffer[2];
+    S1_pulsetime = (S1_pulsetime << 8) | inputbuffer[1];
+    
+    calibrate(S1_pulsetime);
+  }
+  
+  if(option == 2) //move door with simple feedback
+  {
+    uint8_t direction = inputbuffer[1];
+    uint8_t target = inputbuffer[2];
+    uint16_t pulsetime;
+    pulsetime = pulsetime | inputbuffer[4];
+    pulsetime = (pulsetime << 8) | inputbuffer[3];
+    
+    movesimple(direction,target,pulsetime);
+  }
+  
+  if(option == 3) //close door with fancy stepwise feedback
+  {
+    uint8_t start = inputbuffer[1];
+    uint8_t stop = inputbuffer[2];
+    
+    closefancy(start, stop, S1_pulsetime);
+  }
+  
+  
+  // //create 32bit variable from 4 bytes
+  // steps = steps | inputbuffer[3];
+  // steps = (steps << 8) | inputbuffer[2];
+  // steps = (steps << 8) | inputbuffer[1];
+  // steps = (steps << 8) | inputbuffer[0];
+  //
+  // dir = inputbuffer[4];
+  // speed = inputbuffer[5];
+  // stepper = inputbuffer[6];
   
   //select stepper explicitly
-  if(stepper == 1)
+  // if(stepper == 1)
+  // {
+  //   //set direction
+  //   digitalWrite(S1_dir, dir);
+  //
+  //   //rotates stepper 1
+  //   for(int i = 0; i < steps; i++)
+  //   {
+  //     REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
+  //     delayMicroseconds(speed);
+  //     REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
+  //     delayMicroseconds(speed);
+  //   }
+  // }
+  // if(stepper == 2)
+  // {
+  //   //set direction
+  //   digitalWrite(S2_dir, dir);
+  //
+  //   //rotates stepper 2
+  //   for(int i = 0; i < steps; i++)
+  //   {
+  //     REG_PORT_OUTSET0 = PORT_PA16; // ~0.4us stepper 1
+  //     delayMicroseconds(speed);
+  //     REG_PORT_OUTCLR0 = PORT_PA16; // ~0.4us
+  //     delayMicroseconds(speed);
+  //   }
+  // }
+}
+
+void sendData()
+{
+//potentially send different datapacks
+//  if(selectdata == x)
+//  {sendbuffer1 || sendbuffer2  }
+  
+  //sendbuffer[1-6] IR status
+  for(uint8_t i = 0; i < 7; i++)
   {
-    //set direction
-    digitalWrite(S1_dir, dir);
-    
-    //rotates stepper 1
-    for(int i = 0; i < steps; i++)
-    {
-      REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
-      delayMicroseconds(speed);
-      REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
-      delayMicroseconds(speed);
-    }
+    sendbuffer[i] = digitalRead(IR_all[i]);
   }
-  if(stepper == 2)
+  
+  //sendbuffer[7] door status
+  //sendbuffer[7] =
+  //different statuses, moving, finished, time etc.?
+  
+  //sendbuffer[x]
+  //status of stepper 2?
+  
+  
+  Wire.write(sendbuffer,10);
+  
+  //clear sendbuffer after send
+  for(int i = 0;i < 10;i++)
   {
-    //set direction
-    digitalWrite(S2_dir, dir);
-    
-    //rotates stepper 2
-    for(int i = 0; i < steps; i++)
-    {
-      REG_PORT_OUTSET0 = PORT_PA16; // ~0.4us stepper 1
-      delayMicroseconds(speed);
-      REG_PORT_OUTCLR0 = PORT_PA16; // ~0.4us
-      delayMicroseconds(speed);
-    }
+    sendbuffer[i] = 0;
   }
 }
