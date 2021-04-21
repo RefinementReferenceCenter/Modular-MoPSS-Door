@@ -1,22 +1,22 @@
 //------------------------------------------------------------------------------
 /*
---- Adafruit ItsyBitsy M0 pin mapping - Hardware Revision v6.0 ---
+--- Adafruit ItsyBitsy M0 pin mapping - Hardware Revision v6.1 ---
 
  A0- IR TX Barrier
  A1- IR RX Barrier
- A2- IR Bottom
- A3- IR Top
+ A2- IR Top
+ A3- IR Bottom
  A4- IR Middle
- A5- IR Upper
+ A5- IR Lower
 
  D0- Stepper 1 Direction
- D1- Stepper 2 Chip Select (solder for HW v6.0)
+ D1- Stepper 2 Chip Select
  D2- Stepper 1 Enable
  D3- Stepper 1 Chip Select
  D4- Stepper 1 Step [PA08]
  D5- LED 2
  D7- LED 1
- D9- IR Lower
+ D9- IR Upper
 D10- Stepper 2 Direction
 D11- Stepper 2 Step [PA16]
 D12- Stepper 2 Enable
@@ -167,11 +167,32 @@ void setup()
 void loop()
 {
   //read IR sensors
-  // IR_state[0] = digitalRead(top);
-  // IR_state[1] = digitalRead(upper);
-  // IR_state[2] = digitalRead(middle);
-  // IR_state[3] = digitalRead(lower);
-  // IR_state[4] = digitalRead(bottom);
+  // IR_state[0] = digitalRead(IR_top);
+  // IR_state[1] = digitalRead(IR_lower);
+  // IR_state[2] = digitalRead(IR_middle);
+  // IR_state[3] = digitalRead(IR_lower);
+  // IR_state[4] = digitalRead(IR_bottom);
+  // IR_state[5] = digitalRead(IR_barrier_rx);
+  // IR_state[6] = digitalRead(IR_barrier_tx);
+  
+  // Serial.println(analogRead(A2));
+  // Serial.println(analogRead(9));
+  // Serial.println(analogRead(IR_middle));
+  // Serial.println(analogRead(IR_lower));
+  // Serial.println(analogRead(IR_bottom));
+  // Serial.println(analogRead(IR_barrier_rx));
+  // Serial.println(analogRead(IR_barrier_tx));
+  // Serial.println("--------");
+  
+  // Serial.println(digitalRead(IR_top));
+  // Serial.println(digitalRead(IR_lower));
+  // Serial.println(digitalRead(IR_middle));
+  // Serial.println(digitalRead(IR_lower));
+  // Serial.println(digitalRead(IR_bottom));
+  // Serial.println(digitalRead(IR_barrier_rx));
+  // Serial.println(digitalRead(IR_barrier_tx));
+  // Serial.println("--------");
+  
   
   //perform queued moves
   if(Q_movesimple[0])
@@ -186,7 +207,68 @@ void loop()
 //#####   F U N C T I O N S   ##################################################
 //##############################################################################
 
-//close step by step with timing and feedback ----------------------------------
+//move two microsteps
+void move(uint16_t pulsetime)
+{
+  REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
+  delayMicroseconds(pulsetime);
+  REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
+  delayMicroseconds(pulsetime);
+}
+
+//------------------------------------------------------------------------------
+//move door to target position, if door is blocked will retry movement
+void movesimple(uint8_t direction, uint8_t target, uint16_t pulsetime)
+{
+  S1_busy = 1;
+  digitalWrite(S1_dir, direction); //0 open, 1 close
+  
+  uint8_t temp_target;  //temporary target to coordinate retries
+  temp_target = target;
+  uint8_t done = 0;
+  
+  while(!done)
+  {
+    //read IR states
+    IR_state[rx] = digitalRead(IR_barrier_rx);
+    IR_state[tx] = digitalRead(IR_barrier_tx);
+    IR_state[temp_target] = digitalRead(IR_all[temp_target]);
+    
+    //if barrier is blocked on moving down, change direction and target to retry target
+    if(direction && (IR_state[rx] || IR_state[tx]))
+    {
+      direction = up;                  //change dir to up
+      digitalWrite(S1_dir, direction); //0 up, 1 down
+      temp_target = top;               //retry target is top <-- can be changed for different target e.g. only one step up, or half open
+    }
+    
+    //if we are at the retry target after a retry and not blocked, move back to original target
+    if(!(IR_state[temp_target] ^ direction) && (target != temp_target) && !IR_state[rx] && !IR_state[tx])
+    {
+      direction = down;                  //change dir to up
+      digitalWrite(S1_dir, direction);   //0 up, 1 down
+      temp_target = target;
+    }
+    
+    //if not at defined target, move
+    if(IR_state[temp_target] ^ direction)
+    {
+      move(pulsetime);
+    }
+    
+    //if we have reached our target we are done
+    if(!(IR_state[temp_target] ^ direction) && (target == temp_target))
+    {
+      done = 1;
+    }
+  }
+  
+  //done with movement
+  S1_busy = 0;
+}
+
+//------------------------------------------------------------------------------
+//close step by step with timing and feedback
 //calibrate necessary, uses Irs parallel to tube for feedback move
 void closefancy(uint8_t start, uint8_t stop, uint16_t pulsetime)
 {
@@ -245,57 +327,7 @@ void closefancy(uint8_t start, uint8_t stop, uint16_t pulsetime)
 }
 
 //------------------------------------------------------------------------------
-//move door to target position, if door is blocked will retry movement
-void movesimple(uint8_t direction, uint8_t target, uint16_t pulsetime)
-{
-  S1_busy = 1;
-  digitalWrite(S1_dir, direction); //0 open, 1 close
-  
-  uint8_t temp_target; //temporary target to coordinate retries
-  temp_target = target;
-  uint8_t done = 0;
-
-  while(!done)
-  {
-    //read IR states
-    IR_state[rx] = digitalRead(IR_barrier_rx);
-    IR_state[tx] = digitalRead(IR_barrier_tx);
-    IR_state[temp_target] = digitalRead(IR_all[temp_target]);
-    
-    //if barrier is blocked on moving down, change direction and target to retry target
-    if(direction && (IR_state[rx] || IR_state[tx]))
-    {
-      direction = up;                  //change dir to up
-      digitalWrite(S1_dir, direction); //0 up, 1 down
-      temp_target = top;               //retry target is top <-- can be changed for different target e.g. only one step up, or half open
-    }
-    
-    //if we are at the retry target after a retry and not blocked, move back to original target
-    if(!(IR_state[temp_target] ^ direction) && (target != temp_target) && !IR_state[rx] && !IR_state[tx])
-    {
-      direction = down;                  //change dir to up
-      digitalWrite(S1_dir, direction);   //0 up, 1 down
-      temp_target = target;
-    }
-    
-    //if not at defined target, move
-    if(IR_state[temp_target] ^ direction)
-    {
-      move(pulsetime);
-    }
-    
-    //if we have reached our target we are done
-    if(!(IR_state[temp_target] ^ direction) && (target == temp_target))
-    {
-      done = 1;
-    }
-  }
-  
-  //done with movement
-  S1_busy = 0;
-}
-
-//------------------------------------------------------------------------------
+//Do a calibration movement where we time how long it takes the door to reach each IR barrier point
 void calibrate(uint16_t pulsetime)
 {
   movesimple(up, top, pulsetime);
@@ -357,15 +389,6 @@ void calibrate(uint16_t pulsetime)
 }
 
 //------------------------------------------------------------------------------
-//move two microsteps
-void move(uint16_t pulsetime)
-{
-  REG_PORT_OUTSET0 = PORT_PA08; // ~0.4us stepper 1
-  delayMicroseconds(pulsetime);
-  REG_PORT_OUTCLR0 = PORT_PA08; // ~0.4us
-  delayMicroseconds(pulsetime);
-}
-
 //I2C receive instructions
 void receiveEvent(int bytes_incoming)
 {
@@ -434,15 +457,16 @@ void sendData()
   //  {sendbuffer1 || sendbuffer2}
   
   //sendbuffer[0] IR status
-  sendbuffer[0] = IR_state[top] & 0x01;
-  sendbuffer[0] = (sendbuffer[0] << 1) | (IR_state[upper] & 0x01);
-  sendbuffer[0] = (sendbuffer[0] << 1) | (IR_state[middle] & 0x01);
-  sendbuffer[0] = (sendbuffer[0] << 1) | (IR_state[lower] & 0x01);
-  sendbuffer[0] = (sendbuffer[0] << 1) | (IR_state[bottom] & 0x01);
-  sendbuffer[0] = (sendbuffer[0] << 1) | (IR_state[rx] & 0x01);
-  sendbuffer[0] = (sendbuffer[0] << 1) | (IR_state[tx] & 0x01);
+  sendbuffer[0] = sendbuffer[0] | ((IR_state[top] & 0x01) << 0);
+  sendbuffer[0] = sendbuffer[0] | ((IR_state[upper] & 0x01) << 1);
+  sendbuffer[0] = sendbuffer[0] | ((IR_state[middle] & 0x01) << 2);
+  sendbuffer[0] = sendbuffer[0] | ((IR_state[lower] & 0x01) << 3);
+  sendbuffer[0] = sendbuffer[0] | ((IR_state[bottom] & 0x01) << 4);
+  sendbuffer[0] = sendbuffer[0] | ((IR_state[rx] & 0x01) << 5);
+  sendbuffer[0] = sendbuffer[0] | ((IR_state[tx] & 0x01) << 6);
+  //sendbuffer[0] = sendbuffer[0] | ((? & 0x01) << 7);
   
-  sendbuffer[1] = S1_busy & 0x01;
+  sendbuffer[1] = sendbuffer[1] | ((S1_busy & 0x01) << 0);
   
   Wire.write(sendbuffer,2);
 }
