@@ -61,6 +61,7 @@ const uint8_t S2_CS		=	1;
 const uint8_t S2_microsteps = 32;
 
 uint8_t S2_busy = 0;      //Is stepper moving
+uint8_t door_locked = 1;      //is door locked
 
 //IR Sensor Pins
 const uint8_t IR_top = A2;
@@ -86,6 +87,9 @@ const uint8_t tx = 6;
 
 const uint8_t up = 0;   //door direction
 const uint8_t down = 1;
+
+const uint8_t close = 0; //lock direction
+const uint8_t open = 1;
 
 //LEDs
 const uint8_t LED1 = 7;
@@ -136,32 +140,38 @@ void setup()
   
   //Setup stepper drivers
   driver1.begin(); //initialize pins and registries
-	driver1.rms_current(80,0.11,0.4); //set driving current RMS (current RMS, Rsens, hold multiplier) (300max for NEMA 8)
+	driver1.rms_current(100,0.11,0.4); //set driving current RMS (current RMS, Rsens, hold multiplier) (300max for NEMA 8)
   driver1.stealthChop(1); //enable stealthchopping for quiet runnning
 	driver1.microsteps(S1_microsteps); //default 256 for quiet running
   driver1.interpolate(1);
   driver1.double_edge_step(1);
 
   driver2.begin(); //initialize pins and registries
-	driver2.rms_current(80,0.11,0.4); //set driving current RMS (current RMS, Rsens, hold multiplier) (300max for NEMA 8)
+	driver2.rms_current(150,0.11,1); //set driving current RMS (current RMS, Rsens, hold multiplier) (300max for NEMA 8)
   driver2.stealthChop(1); //enable stealthchopping for quiet runnning
 	driver2.microsteps(S2_microsteps); //default 256 for quiet running
   driver2.interpolate(1);
   driver2.double_edge_step(1); //step on rising and falling edge
-
+  
+  pinMode(S1_step,OUTPUT);
+  pinMode(S2_step,OUTPUT);
+  
 	digitalWrite(S1_EN,LOW); //Enable output on drivers
   digitalWrite(S2_EN,LOW); //Enable output on drivers
   
-  //start I2C on address 16
-  Wire.begin(0x10); //atsamd cant multimaster
+  //----- calibrate movements --------------------------------------------------
+  //move lock
+  movelock(open,500); //move the open distance once to make sure it is open before moving the door
+  movesimple(up,top,S1_pulsetime); //move door all the way up
+  movesimple(down,bottom,S1_pulsetime); //and back down so it starts in closed configuration
+  movelock(close,100); //move the close distance twice to make sure we are correctly positioned
+  movelock(close,1000); //slowly not to make too much noise
+  
+  //----- start I2C on address 0x11 --------------------------------------------
+  Wire.begin(0x11); //atsamd cant multimaster
   Wire.onRequest(sendData);     //what to do when being talked to
   Wire.onReceive(receiveEvent); //what to do when/with data received
-  
-  //----- calibrate movement timings
-  //open first
-  //movesimple(up,top,200);
-  //calibrate(S1_pulsetime);
-  //delay(1000);
+
 }
 
 void loop()
@@ -197,8 +207,42 @@ void loop()
   //perform queued moves
   if(Q_movesimple[0])
   {
-    movesimple(Q_movesimple[1],Q_movesimple[2],Q_movesimple[3]);
+    //if opening door, disengange lock first
+    if((Q_movesimple[1] == up) && door_locked)
+    {
+      movelock(open,100);
+      door_locked = 0;
+    }
+    
+    movesimple(Q_movesimple[1],Q_movesimple[2],Q_movesimple[3]); //dir,target,pulsetime
     Q_movesimple[0] = 0;
+    
+    //if moving down, engage lock after move is finished
+    if((Q_movesimple[1] == down) && !door_locked)
+    {
+      uint8_t tries = 0;
+      while((!IR_state[bottom] && !IR_state[lower] && !IR_state[middle] && !IR_state[upper] && !IR_state[top]) || (tries > 19)) //1 second
+      {
+        IR_state[top] = digitalRead(IR_top);
+        IR_state[upper] = digitalRead(IR_upper);
+        IR_state[middle] = digitalRead(IR_middle);
+        IR_state[lower] = digitalRead(IR_lower);
+        IR_state[bottom] = digitalRead(IR_bottom);
+        tries++;
+        delay(50);
+      }
+      
+      //make sure door is properly closed
+      if(tries < 20)
+      {
+        movelock(close,100);
+        door_locked = 1;
+      }
+      else
+      {
+        //door failed to close properly
+      }
+    }
   }
   
 }
@@ -206,6 +250,19 @@ void loop()
 //##############################################################################
 //#####   F U N C T I O N S   ##################################################
 //##############################################################################
+
+void movelock(uint8_t direction, uint16_t pulsetime)
+{
+  digitalWrite(S2_dir, direction); //1 open, 0 close
+  
+  for(uint16_t i=0; i<500; i++)
+  {
+    REG_PORT_OUTSET0 = PORT_PA16; // ~0.4us stepper 1
+    delayMicroseconds(pulsetime);
+    REG_PORT_OUTCLR0 = PORT_PA16; // ~0.4us
+    delayMicroseconds(pulsetime);
+  }
+}
 
 //move two microsteps
 void move(uint16_t pulsetime)
