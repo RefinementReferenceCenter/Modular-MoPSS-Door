@@ -88,8 +88,9 @@ const uint8_t tx = 6;
 const uint8_t up = 0;   //door direction
 const uint8_t down = 1;
 
-const uint8_t close = 0; //lock direction
-const uint8_t open = 1;
+const uint8_t close = 1; //lock direction
+const uint8_t open = 0;
+const uint16_t lock_move_steps = 192;
 
 //LEDs
 const uint8_t LED1 = 7;
@@ -147,7 +148,7 @@ void setup()
   driver1.double_edge_step(1);
 
   driver2.begin(); //initialize pins and registries
-	driver2.rms_current(150,0.11,1); //set driving current RMS (current RMS, Rsens, hold multiplier) (300max for NEMA 8)
+	driver2.rms_current(25,0.11,0.2); //set driving current RMS (current RMS, Rsens, hold multiplier) (300max for NEMA 8)
   driver2.stealthChop(1); //enable stealthchopping for quiet runnning
 	driver2.microsteps(S2_microsteps); //default 256 for quiet running
   driver2.interpolate(1);
@@ -161,11 +162,11 @@ void setup()
   
   //----- calibrate movements --------------------------------------------------
   //move lock
-  movelock(open,500); //move the open distance once to make sure it is open before moving the door
+  movelock(open,250,lock_move_steps); //move the open distance once to make sure it is open before moving the door
   movesimple(up,top,S1_pulsetime); //move door all the way up
   movesimple(down,bottom,S1_pulsetime); //and back down so it starts in closed configuration
-  movelock(close,100); //move the close distance twice to make sure we are correctly positioned
-  movelock(close,1000); //slowly not to make too much noise
+  movelock(close,1000,2112); //move moch more than close distance to make sure we are correctly positioned
+  movelock(open,1000,32);     //open a bit to prevent coil whine from stepper being under tension from pressing against block
   
   //----- start I2C on address 0x11 --------------------------------------------
   Wire.begin(0x11); //atsamd cant multimaster
@@ -210,7 +211,7 @@ void loop()
     //if opening door, disengange lock first
     if((Q_movesimple[1] == up) && door_locked)
     {
-      movelock(open,100);
+      movelock(open,100,lock_move_steps);
       door_locked = 0;
     }
     
@@ -235,7 +236,7 @@ void loop()
       //make sure door is properly closed
       if(tries < 20)
       {
-        movelock(close,100);
+        movelock(close,100,lock_move_steps);
         door_locked = 1;
       }
       else
@@ -251,11 +252,11 @@ void loop()
 //#####   F U N C T I O N S   ##################################################
 //##############################################################################
 
-void movelock(uint8_t direction, uint16_t pulsetime)
+void movelock(uint8_t direction, uint16_t pulsetime, uint16_t steps)
 {
-  digitalWrite(S2_dir, direction); //1 open, 0 close
+  digitalWrite(S2_dir, direction); //0 open, 1 close
   
-  for(uint16_t i=0; i<500; i++)
+  for(uint16_t i=0; i<steps; i++)
   {
     REG_PORT_OUTSET0 = PORT_PA16; // ~0.4us stepper 1
     delayMicroseconds(pulsetime);
