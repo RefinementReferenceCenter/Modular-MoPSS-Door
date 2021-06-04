@@ -43,6 +43,8 @@ D23- I2C SCL
 #include <TMC2130Stepper.h>
 #include <Adafruit_DotStar.h>
 
+const uint8_t has_lock = 1;
+
 //Stepper 1
 const uint8_t S1_dir	=	0;
 const uint8_t S1_step	=	4; //port PA08
@@ -51,7 +53,8 @@ const uint8_t S1_CS		=	3;
 const uint8_t S1_microsteps = 32;
 
 uint8_t S1_busy = 0;         //Is stepper moving
-uint16_t S1_pulsetime = 250; //global speed, needed for calibration
+uint16_t S1_pulsetime = 250; //global speed, for calibration movement
+int16_t steps_to_close;      //holds the number of steps needed to go from open to close position of the door
 
 //Stepper 2
 const uint8_t S2_dir	=	10;
@@ -97,11 +100,6 @@ const uint8_t LED1 = 7;
 const uint8_t LED2 = 5;
 
 uint8_t closedoor = 1;
-
-uint32_t topup_time;
-uint32_t upmid_time;
-uint32_t midlow_time;
-uint32_t lowbot_time;
 
 uint32_t move_interval_times[4];
 
@@ -162,67 +160,48 @@ void setup()
   
   //----- calibrate movements --------------------------------------------------
   //move lock
-  movelock(open,250,lock_move_steps); //move the open distance once to make sure it is open before moving the door
-  movesimple(up,top,S1_pulsetime); //move door all the way up
-  movesimple(down,bottom,S1_pulsetime); //and back down so it starts in closed configuration
-  movelock(close,1000,2112); //move moch more than close distance to make sure we are correctly positioned
-  movelock(open,1000,32);     //open a bit to prevent coil whine from stepper being under tension from pressing against block
+  movelock(open,250,lock_move_steps);   //move the open distance once to make sure it is open before moving the door
+  
+  //repeat closing calibration until two consecutive moves report roughly the same number of steps. perfect conditions vary by ~4 steps
+  uint16_t steps_to_close_last = 11;
+  while(!(steps_to_close < steps_to_close_last+10) || !(steps_to_close > steps_to_close_last-10))
+  {
+    steps_to_close_last = steps_to_close;
+    movesimple(up,top,S1_pulsetime,1);      //move door all the way up
+    steps_to_close = movesimple(down,bottom,S1_pulsetime,1); //and back down so it starts in closed configuration
+    //Serial.println(steps_to_close);
+  }
+  
+  movelock(close,1000,2112);            //move much more than close distance to make sure we are correctly positioned
+  movelock(open,1000,32);               //open a bit to prevent coil whine from stepper being under tension from pressing against mount
   
   //----- start I2C on address 0x11 --------------------------------------------
   Wire.begin(0x11); //atsamd cant multimaster
   Wire.onRequest(sendData);     //what to do when being talked to
   Wire.onReceive(receiveEvent); //what to do when/with data received
-
 }
 
 void loop()
 {
-  //read IR sensors
-  // IR_state[0] = digitalRead(IR_top);
-  // IR_state[1] = digitalRead(IR_lower);
-  // IR_state[2] = digitalRead(IR_middle);
-  // IR_state[3] = digitalRead(IR_lower);
-  // IR_state[4] = digitalRead(IR_bottom);
-  // IR_state[5] = digitalRead(IR_barrier_rx);
-  // IR_state[6] = digitalRead(IR_barrier_tx);
-  
-  // Serial.println(analogRead(A2));
-  // Serial.println(analogRead(9));
-  // Serial.println(analogRead(IR_middle));
-  // Serial.println(analogRead(IR_lower));
-  // Serial.println(analogRead(IR_bottom));
-  // Serial.println(analogRead(IR_barrier_rx));
-  // Serial.println(analogRead(IR_barrier_tx));
-  // Serial.println("--------");
-  
-  // Serial.println(digitalRead(IR_top));
-  // Serial.println(digitalRead(IR_lower));
-  // Serial.println(digitalRead(IR_middle));
-  // Serial.println(digitalRead(IR_lower));
-  // Serial.println(digitalRead(IR_bottom));
-  // Serial.println(digitalRead(IR_barrier_rx));
-  // Serial.println(digitalRead(IR_barrier_tx));
-  // Serial.println("--------");
-  
-  
-  //perform queued moves
+  //------ perform queued moves ------------------------------------------------
   if(Q_movesimple[0])
   {
     //if opening door, disengange lock first
     if((Q_movesimple[1] == up) && door_locked)
     {
-      movelock(open,100,lock_move_steps);
+      movelock(open,100,lock_move_steps); //dir, speed, steps
       door_locked = 0;
     }
     
-    movesimple(Q_movesimple[1],Q_movesimple[2],Q_movesimple[3]); //dir,target,pulsetime
+    //down-movement will always be step-based, up-movement, always feedback based
+    movesimple(Q_movesimple[1],Q_movesimple[2],Q_movesimple[3],!Q_movesimple[1]); //dir,target,pulsetime,IR based(1) or step(0)
     Q_movesimple[0] = 0;
     
     //if moving down, engage lock after move is finished
     if((Q_movesimple[1] == down) && !door_locked)
     {
       uint8_t tries = 0;
-      while((!IR_state[bottom] && !IR_state[lower] && !IR_state[middle] && !IR_state[upper] && !IR_state[top]) || (tries > 19)) //1 second
+      do
       {
         IR_state[top] = digitalRead(IR_top);
         IR_state[upper] = digitalRead(IR_upper);
@@ -231,7 +210,7 @@ void loop()
         IR_state[bottom] = digitalRead(IR_bottom);
         tries++;
         delay(50);
-      }
+      } while(!(IR_state[bottom] && IR_state[lower] && IR_state[middle] && IR_state[upper] && IR_state[top]) && (tries < 20)); //1 second
       
       //make sure door is properly closed
       if(tries < 20)
@@ -241,7 +220,8 @@ void loop()
       }
       else
       {
-        //door failed to close properly
+        //door failed to close properly, do nothing, wait for next time
+        //Serial.println("no lock");
       }
     }
   }
@@ -254,14 +234,17 @@ void loop()
 
 void movelock(uint8_t direction, uint16_t pulsetime, uint16_t steps)
 {
-  digitalWrite(S2_dir, direction); //0 open, 1 close
-  
-  for(uint16_t i=0; i<steps; i++)
+  if(has_lock)
   {
-    REG_PORT_OUTSET0 = PORT_PA16; // ~0.4us stepper 1
-    delayMicroseconds(pulsetime);
-    REG_PORT_OUTCLR0 = PORT_PA16; // ~0.4us
-    delayMicroseconds(pulsetime);
+    digitalWrite(S2_dir, direction); //0 open, 1 close
+    
+    for(uint16_t i=0; i<steps; i++)
+    {
+      REG_PORT_OUTSET0 = PORT_PA16; // ~0.4us stepper 1
+      delayMicroseconds(pulsetime);
+      REG_PORT_OUTCLR0 = PORT_PA16; // ~0.4us
+      delayMicroseconds(pulsetime);
+    }
   }
 }
 
@@ -276,7 +259,7 @@ void move(uint16_t pulsetime)
 
 //------------------------------------------------------------------------------
 //move door to target position, if door is blocked will retry movement
-void movesimple(uint8_t direction, uint8_t target, uint16_t pulsetime)
+uint16_t movesimple(uint8_t direction, uint8_t target, uint16_t pulsetime, uint8_t IR_movement)
 {
   S1_busy = 1;
   digitalWrite(S1_dir, direction); //0 open, 1 close
@@ -284,45 +267,91 @@ void movesimple(uint8_t direction, uint8_t target, uint16_t pulsetime)
   uint8_t temp_target;  //temporary target to coordinate retries
   temp_target = target;
   uint8_t done = 0;
+  uint16_t steps_counted = 0;
   
-  while(!done)
+  //IR based movement
+  if(IR_movement)
   {
-    //read IR states
-    IR_state[rx] = digitalRead(IR_barrier_rx);
-    IR_state[tx] = digitalRead(IR_barrier_tx);
-    IR_state[temp_target] = digitalRead(IR_all[temp_target]);
-    
-    //if barrier is blocked on moving down, change direction and target to retry target
-    if(direction && (IR_state[rx] || IR_state[tx]))
+    while(!done)
     {
-      direction = up;                  //change dir to up
-      digitalWrite(S1_dir, direction); //0 up, 1 down
-      temp_target = top;               //retry target is top <-- can be changed for different target e.g. only one step up, or half open
+      //read IR states
+      IR_state[rx] = digitalRead(IR_barrier_rx);
+      IR_state[tx] = digitalRead(IR_barrier_tx);
+      IR_state[temp_target] = digitalRead(IR_all[temp_target]);
+      
+      //if barrier is blocked on moving down, change direction and target to retry target
+      if(direction && (IR_state[rx] || IR_state[tx]))
+      {
+        direction = up;                  //change dir to up
+        digitalWrite(S1_dir, direction); //0 up, 1 down
+        temp_target = top;               //retry target is top <-- can be changed for different target e.g. only one step up, or half open
+      }
+      
+      //if we are at the retry target after a retry and not blocked, move back to original target
+      if(!(IR_state[temp_target] ^ direction) && (target != temp_target) && !IR_state[rx] && !IR_state[tx])
+      {
+        direction = down;                  //change dir to down
+        digitalWrite(S1_dir, direction);   //0 up, 1 down
+        temp_target = target;
+      }
+      
+      //if not at defined target, move
+      if(IR_state[temp_target] ^ direction)
+      {
+        move(pulsetime);
+        if(direction == up) steps_counted--;
+        else steps_counted++;
+      }
+      
+      //if we have reached our target we are done
+      if(!(IR_state[temp_target] ^ direction) && (target == temp_target))
+      {
+        done = 1;
+      }
     }
-    
-    //if we are at the retry target after a retry and not blocked, move back to original target
-    if(!(IR_state[temp_target] ^ direction) && (target != temp_target) && !IR_state[rx] && !IR_state[tx])
+  }
+  else
+  {
+    //Step based movement
+    while(!done)
     {
-      direction = down;                  //change dir to up
-      digitalWrite(S1_dir, direction);   //0 up, 1 down
-      temp_target = target;
-    }
-    
-    //if not at defined target, move
-    if(IR_state[temp_target] ^ direction)
-    {
-      move(pulsetime);
-    }
-    
-    //if we have reached our target we are done
-    if(!(IR_state[temp_target] ^ direction) && (target == temp_target))
-    {
-      done = 1;
+      //read IR states
+      IR_state[rx] = digitalRead(IR_barrier_rx);
+      IR_state[tx] = digitalRead(IR_barrier_tx);
+      
+      //if barrier is blocked on moving down, change direction and target to retry target
+      if(direction && (IR_state[rx] || IR_state[tx]))
+      {
+        direction = up;                   //change dir to up
+        digitalWrite(S1_dir, direction);  //0 up, 1 down
+      }
+      
+      //if we are at the retry target after a retry and not blocked, move back to original target
+      if((steps_counted <= 0) && !IR_state[rx] && !IR_state[tx])
+      {
+        direction = down;                 //change dir to down
+        digitalWrite(S1_dir, direction);  //0 up, 1 down
+      }
+      
+      //move if not blocked and not at defined target
+      if((direction == down) || ((direction == up) && !(steps_counted <= 0)))
+      {
+        move(pulsetime);
+        if(direction == up) steps_counted--;
+        else steps_counted++;
+      }
+      
+      //if we have reached our target we are done
+      if(steps_counted >= steps_to_close + 5) //add a few more steps to counter drift
+      {
+        done = 1;
+      }
     }
   }
   
   //done with movement
   S1_busy = 0;
+  return steps_counted;
 }
 
 //------------------------------------------------------------------------------
@@ -388,7 +417,7 @@ void closefancy(uint8_t start, uint8_t stop, uint16_t pulsetime)
 //Do a calibration movement where we time how long it takes the door to reach each IR barrier point
 void calibrate(uint16_t pulsetime)
 {
-  movesimple(up, top, pulsetime);
+  movesimple(up, top, pulsetime,1);
   //now move down
   digitalWrite(S1_dir, down);
   uint32_t move_time = millis();
@@ -435,7 +464,7 @@ void calibrate(uint16_t pulsetime)
   move_interval_times[3] = millis() - move_time;
   delay(100);
   
-  movesimple(up, top, pulsetime);
+  movesimple(up, top, pulsetime,1);
   
   // Serial.print(move_interval_times[0]);
   // Serial.print(" ");
