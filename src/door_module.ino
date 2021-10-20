@@ -116,7 +116,7 @@ void setup()
   //Set up RGB LED on board, and turn it off
   strip.begin(); //Initialize pins for output
   strip.show();  //Turn dotstar LED off
-//  while(!Serial);
+  //while(!Serial);
   
   //Setup IR Sensors (high when interrrupted)
   pinMode(IR_top,INPUT);
@@ -128,22 +128,22 @@ void setup()
   pinMode(IR_barrier_rx,INPUT);
   pinMode(IR_barrier_tx,INPUT);
   
-  /* IR debug
-  while(1)
-  {
-    Serial.print(digitalRead(IR_top));
-    Serial.print(digitalRead(IR_upper));
-    Serial.print(digitalRead(IR_middle));
-    Serial.print(digitalRead(IR_lower));
-    Serial.print(digitalRead(IR_bottom));
-    Serial.print("-");
-    Serial.print(analogRead(A1));
-    Serial.print("-");
-    Serial.println(analogRead(A0));
-
-    delay(250);
-  }
-  */
+  // IR debug
+  // while(1)
+  // {
+  //   Serial.print(digitalRead(IR_top));
+  //   Serial.print(digitalRead(IR_upper));
+  //   Serial.print(digitalRead(IR_middle));
+  //   Serial.print(digitalRead(IR_lower));
+  //   Serial.print(digitalRead(IR_bottom));
+  //   Serial.print("-");
+  //   Serial.print(analogRead(A1));
+  //   Serial.print("-");
+  //   Serial.println(analogRead(A0));
+  //
+  //   delay(250);
+  // }
+  
   
   //setup Interrupts
 //  attachInterrupt(digitalPinToInterrupt(IR_barrier_rx), IR_barrier_rx_ISR, RISING); //IR stepper side
@@ -181,7 +181,7 @@ void setup()
   //----- calibrate movements --------------------------------------------------
   //move lock
   movelock(open,250,lock_move_steps);   //move the open distance once to make sure it is open before moving the door
-  
+
   //repeat closing calibration until two consecutive moves report roughly the same number of steps. perfect conditions vary by ~4 steps
   uint16_t steps_to_close_last = 11;
   while(!(steps_to_close < steps_to_close_last+10) || !(steps_to_close > steps_to_close_last-10))
@@ -196,7 +196,7 @@ void setup()
   movelock(open,1000,32);               //open a bit to prevent coil whine from stepper being under tension from pressing against mount
   
   //----- start I2C on address 0x11 --------------------------------------------
-  Wire.begin(0x11); //atsamd cant multimaster
+  Wire.begin(0x14); //atsamd cant multimaster
   Wire.onRequest(sendData);     //what to do when being talked to
   Wire.onReceive(receiveEvent); //what to do when/with data received
 }
