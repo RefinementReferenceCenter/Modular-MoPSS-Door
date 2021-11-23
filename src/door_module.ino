@@ -104,7 +104,8 @@ uint8_t closedoor = 1;
 uint32_t move_interval_times[4];
 
 //global variable to move the blocking stepper movement out of the i2c function
-uint16_t Q_movesimple[4]; //queue a movesimple command to release I2C bus
+volatile uint16_t Q_movesimple[4]; //queue a movesimple command to release I2C bus
+volatile uint16_t Q_vibrate[4];
 
 Adafruit_DotStar strip(1, 41, 40, DOTSTAR_BRG); //create dotstar object
 
@@ -196,7 +197,7 @@ void setup()
   movelock(open,1000,32);               //open a bit to prevent coil whine from stepper being under tension from pressing against mount
   
   //----- start I2C on address 0x11 --------------------------------------------
-  Wire.begin(0x14); //atsamd cant multimaster
+  Wire.begin(0x12); //atsamd cant multimaster
   Wire.onRequest(sendData);     //what to do when being talked to
   Wire.onReceive(receiveEvent); //what to do when/with data received
 }
@@ -254,6 +255,36 @@ void loop()
     S1_busy = 0; //done performing all moves
   }
   
+  // delay(3000);
+  // Q_vibrate[0] = 1;
+  // Q_vibrate[1] = 1*32;  //steps
+  // Q_vibrate[2] = 150; //speed
+  // Q_vibrate[3] = 10;  //repetitions (duration)
+    
+  if(Q_vibrate[0])
+  {
+    Serial.println("Qvib");
+    S1_busy = 1; //mark module busy as soon as movement command appears
+    Q_vibrate[0] = 0; //clear queued vibrate flag
+    uint8_t direction = up; //first move direction
+    //Q_vibrate[1];   //steps
+    //Q_vibrate[2];   //speed
+    //Q_vibrate[3];   //repetitions
+    
+    for(uint8_t h = 0; h <= (Q_vibrate[3]*2); h++)
+    {
+      digitalWrite(S1_dir, direction);
+      for(uint8_t i = 0; i <= Q_vibrate[1]; i++)
+      {
+        move(Q_vibrate[2]);
+      }
+      direction = !direction;
+    }
+
+    movesimple(down,bottom,S1_pulsetime,1);
+    
+    S1_busy = 0; //mark module busy as soon as movement command appears
+  }
 }
 
 //##############################################################################
@@ -558,6 +589,14 @@ void receiveEvent(int bytes_incoming)
     uint8_t stop = inputbuffer[2];
     
     closefancy(start, stop, S1_pulsetime);
+  }
+  
+  if(option == 4) //door feedback vibration
+  {
+    Q_vibrate[1] = inputbuffer[1];  //steps
+    Q_vibrate[2] = inputbuffer[2];  //speed
+    Q_vibrate[3] = inputbuffer[3];  //repetitions
+    Q_vibrate[0] = 1;               //queues movement
   }
 }
 
