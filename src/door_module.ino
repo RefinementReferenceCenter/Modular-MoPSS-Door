@@ -377,21 +377,23 @@ uint16_t movesimple(uint8_t direction, uint8_t target, uint16_t pulsetime, uint8
       IR_state[rx] = digitalRead(IR_barrier_rx);
       IR_state[tx] = digitalRead(IR_barrier_tx);
       
-      //if barrier is blocked on moving down, change direction and target to retry target
+      //if barrier is blocked on moving down, change direction
       if(direction && (IR_state[rx] || IR_state[tx]))
       {
         direction = up;                   //change dir to up
         digitalWrite(S1_dir, direction);  //0 up, 1 down
       }
       
-      //if we are at the retry target after a retry and not blocked, move back to original target
-      if((steps_counted <= 0) && !IR_state[rx] && !IR_state[tx])
+      //move all the way to the top if IR is blocked
+      //if((steps_counted <= 0) && !IR_state[rx] && !IR_state[tx])
+      //if we are moving up or we have reached the top, change direction to down but only if IR is not blocked
+      if((!direction || (steps_counted <= 0)) && (!IR_state[rx] && !IR_state[tx]))
       {
         direction = down;                 //change dir to down
         digitalWrite(S1_dir, direction);  //0 up, 1 down
       }
       
-      //move if not blocked and not at defined target
+      //move up if blocked and down only if not blocked
       if((direction == down) || ((direction == up) && !(steps_counted <= 0)))
       {
         move(pulsetime);
@@ -399,7 +401,7 @@ uint16_t movesimple(uint8_t direction, uint8_t target, uint16_t pulsetime, uint8
         else steps_counted++;
       }
       
-      //if we have reached our target we are done
+      //if we made the number of calibrated steps for down movement, we are done
       if(steps_counted >= steps_to_close + 5) //add a few more steps to counter drift
       {
         done = 1;
