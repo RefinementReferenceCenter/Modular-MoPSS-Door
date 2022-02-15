@@ -195,7 +195,7 @@ void setup(){
   movelock(open,1000,32);               //open a bit to prevent coil whine from stepper being under tension from pressing against mount
   
   //----- start I2C on address 0x11 --------------------------------------------
-  Wire.begin(0x11); //atsamd cant multimaster
+  Wire.begin(0x11);             //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
   Wire.onRequest(sendData);     //what to do when being talked to
   Wire.onReceive(receiveEvent); //what to do when/with data received
 }
@@ -212,7 +212,9 @@ void loop(){
     Ql_movesimple[3] = Q_movesimple[3];
     
     //down-movement will always be step-based, up-movement, always feedback based
-    movesimple(Ql_movesimple[1],Ql_movesimple[2],Ql_movesimple[3],!Ql_movesimple[1]);} //dir,target,pulsetime,IR based(1) or step(0)
+    movesimple(Ql_movesimple[1],Ql_movesimple[2],Ql_movesimple[3],!Ql_movesimple[1]); //dir,target,pulsetime,IR based(1) or step(0)
+    
+    S1_busy = 0;}
   
   //------ perform queued vibration of door ------------------------------------
   if(Q_vibrate[0]){
@@ -317,7 +319,7 @@ uint16_t movesimple(uint8_t direction, uint8_t target, uint16_t pulsetime, uint8
       if((direction == down) || ((direction == up) && !(steps_counted <= 0))){
         if(direction == up){ //when moving up, move up slower
           steps_counted--;
-          move(pulsetime * 4);}
+          move(5000);}       //very slow up movement
         else{                //down movement at normal speed
           steps_counted++;
           move(pulsetime);}}
