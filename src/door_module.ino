@@ -52,9 +52,10 @@ const uint8_t S1_EN		=	2;
 const uint8_t S1_CS		=	3;
 const uint8_t S1_microsteps = 32;
 
-volatile uint8_t S1_busy = 0;         //Is stepper moving
-uint16_t S1_pulsetime = 250; //global speed, for calibration movement
-int16_t steps_to_close;      //holds the number of steps needed to go from open to close position of the door
+volatile uint8_t S1_busy = 0; //Is stepper moving
+uint16_t S1_pulsetime = 250;  //global speed, for calibration movement
+int16_t steps_to_close;       //holds the number of steps needed to go from open to close position of the door
+int16_t steps_last_move;      //holds current position in steps when move is interrupted
 
 //Stepper 2
 const uint8_t S2_dir	=	10;
@@ -64,7 +65,7 @@ const uint8_t S2_CS		=	1;
 const uint8_t S2_microsteps = 32;
 
 uint8_t S2_busy = 0;      //Is stepper moving
-uint8_t door_locked = 1;      //is door locked
+uint8_t door_locked = 1;  //is door locked
 
 //IR Sensor Pins
 const uint8_t IR_top = A2;
@@ -106,12 +107,16 @@ uint32_t move_interval_times[4];
 //global variable to move the blocking stepper movement out of the i2c function
 volatile uint16_t Q_movesimple[4]; //queue a movesimple command to release I2C bus
 volatile uint16_t Q_vibrate[4];
+volatile uint8_t newcommand = 0;   //flag for abandoning current movement
 
 Adafruit_DotStar strip(1, 41, 40, DOTSTAR_BRG); //create dotstar object
 
 TMC2130Stepper driver1 = TMC2130Stepper(S1_EN, S1_dir, S1_step, S1_CS);
 TMC2130Stepper driver2 = TMC2130Stepper(S2_EN, S2_dir, S2_step, S2_CS);
 
+//##############################################################################
+//#####   S E T U P   ##########################################################
+//##############################################################################
 void setup(){
   //Set up RGB LED on board, and turn it off
   strip.begin(); //Initialize pins for output
@@ -143,7 +148,6 @@ void setup(){
   //
   //   delay(250);
   // }
-  
   
   //setup Interrupts
 //  attachInterrupt(digitalPinToInterrupt(IR_barrier_rx), IR_barrier_rx_ISR, RISING); //IR stepper side
@@ -200,6 +204,9 @@ void setup(){
   Wire.onReceive(receiveEvent); //what to do when/with data received
 }
 
+//##############################################################################
+//#####   L O O P   ############################################################
+//##############################################################################
 void loop(){
   //------ perform queued move -------------------------------------------------
   if(Q_movesimple[0]){
@@ -212,10 +219,10 @@ void loop(){
     Ql_movesimple[3] = Q_movesimple[3];
     
     //down-movement will always be step-based, up-movement, always feedback based
-    movesimple(Ql_movesimple[1],Ql_movesimple[2],Ql_movesimple[3],!Ql_movesimple[1]); //dir,target,pulsetime,IR based(1) or step(0)
+    steps_last_move = movesimple(Ql_movesimple[1],Ql_movesimple[2],Ql_movesimple[3],!Ql_movesimple[1]); //dir,target,pulsetime,IR based(1) or step(0)
     
-    S1_busy = 0;}
-  
+    if(!Q_movesimple[0]) S1_busy = 0;}
+    
   //------ perform queued vibration of door ------------------------------------
   if(Q_vibrate[0]){
     //Serial.println("Qvib");
@@ -263,14 +270,15 @@ void move(uint16_t pulsetime){
 uint16_t movesimple(uint8_t direction, uint8_t target, uint16_t pulsetime, uint8_t IR_movement){
   digitalWrite(S1_dir, direction); //0 open, 1 close
   
-  uint8_t temp_target;  //temporary target to coordinate retries
+  uint8_t temp_target;        //temporary target to coordinate retries
   temp_target = target;
-  uint8_t done = 0;
-  int16_t steps_counted = 0;
+  uint8_t done = 0;           //flag if movement is finsihed
+  int16_t steps_counted = 0;  //counts steps for step-based movement
   
-  //IR based movement
-  if(IR_movement){
+  if(IR_movement){ //IR based movement
     while(!done){
+      //if(Q_movesimple[0]) done = 1; //stop current operation if new movement command arrives
+      
       //read IR states
       IR_state[rx] = digitalRead(IR_barrier_rx);
       IR_state[tx] = digitalRead(IR_barrier_tx);
@@ -296,9 +304,9 @@ uint16_t movesimple(uint8_t direction, uint8_t target, uint16_t pulsetime, uint8
       
       //if we have reached our target we are done
       if(!(IR_state[temp_target] ^ direction) && (target == temp_target)) done = 1;}}
-  else{
-    //Step based movement
+  else{ //Step based movement
     while(!done){
+      if(Q_movesimple[0]) done = 1; //stop current operation if new movement command
       //read IR states
       IR_state[rx] = digitalRead(IR_barrier_rx);
       IR_state[tx] = digitalRead(IR_barrier_tx);
@@ -455,7 +463,8 @@ void receiveEvent(int bytes_incoming){
     Q_movesimple[3] = Q_movesimple[3] | inputbuffer[4];         //pulsetime
     Q_movesimple[3] = (Q_movesimple[3] << 8) | inputbuffer[3];  //pulsetime
     
-    Q_movesimple[0] = 1;} //queues movement
+    Q_movesimple[0] = 1; //queues movement
+    newcommand = 1;}
   
   if(option == 3){ //close door with fancy stepwise feedback
     uint8_t start = inputbuffer[1];
