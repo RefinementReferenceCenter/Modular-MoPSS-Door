@@ -8,12 +8,12 @@
         {
             "name": "PlatformIO",
             "includePath": [
-                "/home/birk/github/Modular-MoPSS-Door-1/include",
-                "/home/birk/github/Modular-MoPSS-Door-1/src",
-                "/home/birk/github/Modular-MoPSS-Door-1/.pio/libdeps/adafruit_itsybitsy_m0/Adafruit DotStar",
-                "/home/birk/github/Modular-MoPSS-Door-1/.pio/libdeps/adafruit_itsybitsy_m0/Adafruit BusIO",
+                "/home/birk/github/Modular-MoPSS-Door/include",
+                "/home/birk/github/Modular-MoPSS-Door/src",
+                "/home/birk/github/Modular-MoPSS-Door/.pio/libdeps/adafruit_itsybitsy_m0/Adafruit DotStar",
+                "/home/birk/github/Modular-MoPSS-Door/.pio/libdeps/adafruit_itsybitsy_m0/Adafruit BusIO",
                 "/home/birk/.platformio/packages/framework-arduino-samd-adafruit/libraries/Wire",
-                "/home/birk/github/Modular-MoPSS-Door-1/.pio/libdeps/adafruit_itsybitsy_m0/TMC2130Stepper/src",
+                "/home/birk/github/Modular-MoPSS-Door/.pio/libdeps/adafruit_itsybitsy_m0/TMC2130Stepper/src",
                 "/home/birk/.platformio/packages/framework-arduino-samd-adafruit/libraries/SPI",
                 "/home/birk/.platformio/packages/framework-arduino-samd-adafruit/libraries/Adafruit_ZeroDMA",
                 "/home/birk/.platformio/packages/framework-arduino-samd-adafruit/libraries/Adafruit_ZeroDMA/utility",
@@ -36,12 +36,12 @@
             "browse": {
                 "limitSymbolsToIncludedHeaders": true,
                 "path": [
-                    "/home/birk/github/Modular-MoPSS-Door-1/include",
-                    "/home/birk/github/Modular-MoPSS-Door-1/src",
-                    "/home/birk/github/Modular-MoPSS-Door-1/.pio/libdeps/adafruit_itsybitsy_m0/Adafruit DotStar",
-                    "/home/birk/github/Modular-MoPSS-Door-1/.pio/libdeps/adafruit_itsybitsy_m0/Adafruit BusIO",
+                    "/home/birk/github/Modular-MoPSS-Door/include",
+                    "/home/birk/github/Modular-MoPSS-Door/src",
+                    "/home/birk/github/Modular-MoPSS-Door/.pio/libdeps/adafruit_itsybitsy_m0/Adafruit DotStar",
+                    "/home/birk/github/Modular-MoPSS-Door/.pio/libdeps/adafruit_itsybitsy_m0/Adafruit BusIO",
                     "/home/birk/.platformio/packages/framework-arduino-samd-adafruit/libraries/Wire",
-                    "/home/birk/github/Modular-MoPSS-Door-1/.pio/libdeps/adafruit_itsybitsy_m0/TMC2130Stepper/src",
+                    "/home/birk/github/Modular-MoPSS-Door/.pio/libdeps/adafruit_itsybitsy_m0/TMC2130Stepper/src",
                     "/home/birk/.platformio/packages/framework-arduino-samd-adafruit/libraries/SPI",
                     "/home/birk/.platformio/packages/framework-arduino-samd-adafruit/libraries/Adafruit_ZeroDMA",
                     "/home/birk/.platformio/packages/framework-arduino-samd-adafruit/libraries/Adafruit_ZeroDMA/utility",
@@ -63,7 +63,7 @@
                 ]
             },
             "defines": [
-                "PLATFORMIO=60103",
+                "PLATFORMIO=60104",
                 "ARDUINO_ITSYBITSY_M0",
                 "ADAFRUIT_ITSYBITSY_M0",
                 "CRYSTALLESS",
