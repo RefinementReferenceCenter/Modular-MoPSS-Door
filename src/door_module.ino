@@ -187,6 +187,7 @@ void setup(){
   movelock(open,250,lock_move_steps);   //move the open distance once to make sure it is open before moving the door
 
   //repeat closing calibration until two consecutive moves report roughly the same number of steps. perfect conditions vary by ~4 steps
+  Serial.println("calibrate");
   uint16_t steps_to_close_last = 11;
   while(!(steps_to_close < steps_to_close_last+10) || !(steps_to_close > steps_to_close_last-10)){
     steps_to_close_last = steps_to_close;
