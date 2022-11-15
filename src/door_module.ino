@@ -1,42 +1,51 @@
-//------------------------------------------------------------------------------
-/*
---- Adafruit ItsyBitsy M0 pin mapping - Hardware Revision v6.1 ---
+/*------------------------------------------------------------------------------
+- PJRC Teensy LC pin mapping - Hardware Revision v7.0
 
- A0- IR TX Barrier
- A1- IR RX Barrier
- A2- IR Top
- A3- IR Bottom
- A4- IR Middle
- A5- IR Lower
+//Stepper 1
+D1  - IR1 TX1          infrared lightbarrier 1 transmitter side, crossed-over input 1
+D0  - IR1 TX2          infrared lightbarrier 1 transmitter side, crossed-over input 2
+D21 - IR1 RX1          infrared lightbarrier 1 receiver side, crossed-over input 1
+D24 - IR1 RX2          infrared lightbarrier 1 receiver side, crossed-over input 2
+D25 - IR1 top          infrared lightbarrier 1 receiver side, perpendicular input 1
+D4  - IR1 Bottom       infrared lightbarrier 1 receiver side, perpendicular input 2
+D2  - Stepper 1 CS     Chip Select pin
+D3  - Stepper 1 DIR    Direction signal
+D22 - Stepper 1 STEP   Step pulse signal
+D23 - Stepper 1 EN     enable signal
+D14 - LED1             status LED for Stepper 1
 
- D0- Stepper 1 Direction
- D1- Stepper 2 Chip Select
- D2- Stepper 1 Enable
- D3- Stepper 1 Chip Select
- D4- Stepper 1 Step [PA08]
- D5- LED 2
- D7- LED 1
- D9- IR Upper
-D10- Stepper 2 Direction
-D11- Stepper 2 Step [PA16]
-D12- Stepper 2 Enable
-D13-
+//Stepper 2
+D6 - IR2 TX1
+D5 - IR2 TX2
+D20 - IR2 RX1
+D15 - IR2 RX2
+D16 - IR2 Top
+D17 - IR2 Bottom
+D7  - Stepper 2 CS
+D10 - Stepper 2 DIR
+D8  - Stepper 2 STEP
+D9  - Stepper 2 ENABLE
+D26 - LED 2
 
-D22- I2C SDA
-D23- I2C SCL
+//Comms
+D11 - MOSI
+D12 - MISO
+D13 - SCK
+D18 - SDA
+D19 - SCL
 
 --- Experimental Setup ---
 
    | door
    |
-   |
-|[ | <| IR top
-|[ | <| IR upper
-|[ | <| IR middle
-|[   <| IR lower
-|[   <| IR bottom
+   |                     \    / IR R/TX 1
+|[ | <| IR RX top         \  /
+|  |  |                    \/
+|  |  |                    /\
+|     |                   /  \
+|[   <| IR RX bottom     /    \ IR R/TX 2
 
-*/
+*///----------------------------------------------------------------------------
 
 #include <Arduino.h>
 #include <Wire.h>
