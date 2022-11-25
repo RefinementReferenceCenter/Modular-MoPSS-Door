@@ -47,7 +47,7 @@ D19 - SCL
 
 *///----------------------------------------------------------------------------
 
-#include <Wire.h>
+#include <i2c_t3.h>
 #include <TMCStepper.h>
 
 //Stepper 1
@@ -69,23 +69,32 @@ const uint8_t S2_EN		=	9;
 const uint8_t S2_CS		=	7;
 const uint8_t S2_microsteps = 32;
 
-uint8_t S2_busy = 0;      //Is stepper moving
+volatile uint8_t S2_busy = 0;      //Is stepper moving
 
 
 //IR Sensor Pins
-const uint8_t IR1_tx1 = 1;
-const uint8_t IR1_tx2 = 0;
-const uint8_t IR1_rx1 = 21;
-const uint8_t IR1_rx2 = 24;
-const uint8_t IR1_top = 25;
-const uint8_t IR1_bottom = 4;
+const int IRtx1[2] = {1,0};
+const int IRrx1[2] = {21,24};
+const int IRd1[2] = {25,4};  //top, bottom
 
-const uint8_t IR2_tx1 = 6;
-const uint8_t IR2_tx2 = 5;
-const uint8_t IR2_rx1 = 20;
-const uint8_t IR2_rx2 = 15;
-const uint8_t IR2_top = 16;
-const uint8_t IR2_bottom = 17;
+const int IRtx2[2] = {6,5};
+const int IRrx2[2] = {20,15};
+const int IRd2[2] = {16,17};  //top, bottom
+
+
+// const uint8_t IR1_tx1 = 1;
+// const uint8_t IR1_tx2 = 0;
+// const uint8_t IR1_rx1 = 21;
+// const uint8_t IR1_rx2 = 24;
+// const uint8_t IR1_top = 25;
+// const uint8_t IR1_bottom = 4;
+
+// const uint8_t IR2_tx1 = 6;
+// const uint8_t IR2_tx2 = 5;
+// const uint8_t IR2_rx1 = 20;
+// const uint8_t IR2_rx2 = 15;
+// const uint8_t IR2_top = 16;
+// const uint8_t IR2_bottom = 17;
 
 //const uint8_t IR_all[7] = {IR_top, IR_upper, IR_middle, IR_lower, IR_bottom, IR_barrier_rx, IR_barrier_tx}; //1=blocked
 //volatile uint8_t IR_state[7] = {0,0,0,0,0,0,0};
@@ -93,8 +102,8 @@ const uint8_t IR2_bottom = 17;
 //to improve function readability
 const uint8_t top = 0;    //IR LEDs
 const uint8_t bottom = 1;
-const uint8_t rx = 2;
-const uint8_t tx = 3;
+//const uint8_t rx = 2;
+//const uint8_t tx = 3;
 
 const uint8_t up = 0;   //door direction
 const uint8_t down = 1;
@@ -126,8 +135,6 @@ AccelStepper Yaxis(1, 4, 7); // pin 4 = step, pin 7 = direction
  Xaxis.runSpeed();
    Yaxis.runSpeed();
 
-
-
 mystepper.moveTo(targetPosition);
 Move the motor to a new absolute position. This returns immediately. Actual movement is caused by the run() function.
 
@@ -152,11 +159,8 @@ Set the speed, in steps per second. This function returns immediately. Actual mo
 
 mystepper.runSpeed();
 Update the motor. This must be called repetitively to make the motor move.
-
-
-
-
 */
+
 //##############################################################################
 //#####   S E T U P   ##########################################################
 //##############################################################################
@@ -164,19 +168,19 @@ void setup(){
   //while(!Serial); //wait for serial connection
   
   //Setup IR Sensors (high when interrrupted)
-  pinMode(IR1_top,INPUT);
-  pinMode(IR1_bottom,INPUT);
-  pinMode(IR1_tx1,INPUT);
-  pinMode(IR1_tx2,INPUT);
-  pinMode(IR1_rx1,INPUT);
-  pinMode(IR1_rx2,INPUT);
-  
-  pinMode(IR2_top,INPUT);
-  pinMode(IR2_bottom,INPUT);
-  pinMode(IR2_tx1,INPUT);
-  pinMode(IR2_tx2,INPUT);
-  pinMode(IR2_rx1,INPUT);
-  pinMode(IR2_rx2,INPUT);
+  pinMode(IRtx1[0],INPUT);
+  pinMode(IRtx1[1],INPUT);
+  pinMode(IRrx1[0],INPUT);
+  pinMode(IRrx1[1],INPUT);
+  pinMode(IRd1[0],INPUT);
+  pinMode(IRd1[1],INPUT);
+
+  pinMode(IRtx2[0],INPUT);
+  pinMode(IRtx2[1],INPUT);
+  pinMode(IRrx2[0],INPUT);
+  pinMode(IRrx2[1],INPUT);
+  pinMode(IRd2[0],INPUT);
+  pinMode(IRd2[1],INPUT);
 
   // IR debug
   // while(1)
