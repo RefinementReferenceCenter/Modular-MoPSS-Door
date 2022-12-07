@@ -58,7 +58,7 @@ const uint8_t S1_CS		=	2;
 const uint8_t S1_microsteps = 32;
 
 volatile uint8_t S1_busy = 0; //Is stepper moving
-uint16_t S1_pulsetime = 250;  //global speed, for calibration movement
+uint16_t S1_pulsetime = 300;  //global speed, for calibration movement
 int16_t steps_to_close;       //holds the number of steps needed to go from open to close position of the door
 int16_t steps_last_move;      //holds current position in steps when move is interrupted
 
@@ -165,14 +165,14 @@ void setup(){
   
   //Setup stepper drivers
   driver1.begin(); //initialize pins and registries
-	driver1.rms_current(100,0.4); //set driving current RMS (current RMS, hold multiplier) (300max for NEMA 8)
+	driver1.rms_current(150,0.4); //set driving current RMS (current RMS, hold multiplier) (300max for NEMA 8)
   driver1.en_pwm_mode(true);  //enable stealthchopping for quiet runnning
 	driver1.microsteps(S1_microsteps); //default 256 for quiet running
   driver1.pwm_autoscale(true);     // Needed for stealthChop
   driver1.dedge(true);  //step on both edges of the signal
 
   driver2.begin(); //initialize pins and registries
-	driver2.rms_current(100,0.4); //set driving current RMS (current RMS, hold multiplier) (300max for NEMA 8)
+	driver2.rms_current(150,0.4); //set driving current RMS (current RMS, hold multiplier) (300max for NEMA 8)
   driver2.en_pwm_mode(true);  //enable stealthchopping for quiet runnning
 	driver2.microsteps(S2_microsteps); //default 256 for quiet running
   driver2.pwm_autoscale(true);     // Needed for stealthChop
@@ -194,7 +194,7 @@ void setup(){
     steps_to_close_last = steps_to_close;
     movesimple(up,top,S1_pulsetime,1);      //move door all the way up
     steps_to_close = movesimple(down,bottom,S1_pulsetime,1); //and back down so it starts in closed configuration
-    //Serial.println(steps_to_close);
+    Serial.println(steps_to_close);
   }
   
   //----- start I2C on address 0x10 --------------------------------------------
@@ -210,7 +210,6 @@ void setup(){
 //#####   L O O P   ############################################################
 //##############################################################################
 void loop(){
-
 
   //move the steppers
   // if(S1_move && (micros() - S1_timer >= S1_next_pulse)){
@@ -240,9 +239,9 @@ void loop(){
   // delay(250);
 
   //debug movement
-  movesimple(up,top,250,1);
+  movesimple(up,top,300,1);
   delay(5000);
-  movesimple(down,bottom,250,1);
+  movesimple(down,bottom,300,1);
   delay(5000);
 
 
