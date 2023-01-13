@@ -58,9 +58,9 @@ const uint8_t S1_CS		=	2;
 const uint8_t S1_microsteps = 32;
 
 volatile uint8_t S1_busy = 0; //Is stepper moving
-uint16_t S1_pulsetime = 300;  //global speed, for calibration movement
-int16_t steps_to_close;       //holds the number of steps needed to go from open to close position of the door
-int16_t steps_last_move;      //holds current position in steps when move is interrupted
+uint16_t S1_pulsetime = 250;  //global speed, for calibration movement
+int16_t S1_steps_to_close;       //holds the number of steps needed to go from open to close position of the door
+int16_t S1_steps_last_move;      //holds current position in steps when move is interrupted
 
 uint8_t S1_move = 0;      //flag to make stepper move
 uint32_t S1_timer = 0;        //time to the next step pulse
@@ -74,6 +74,9 @@ const uint8_t S2_CS		=	7;
 const uint8_t S2_microsteps = 32;
 
 volatile uint8_t S2_busy = 0;      //Is stepper moving
+uint16_t S2_pulsetime = 250;  //global speed, for calibration movement
+int16_t S2_steps_to_close;       //holds the number of steps needed to go from open to close position of the door
+int16_t S2_steps_last_move;      //holds current position in steps when move is interrupted
 
 uint32_t S2_timer = 0;      //time to the next step pulse
 uint16_t S2_next_pulse = 0; //how long to wait for the next stepping pulse
@@ -188,19 +191,29 @@ void setup(){
   //----- calibrate movements --------------------------------------------------
   
   //repeat closing calibration until two consecutive moves report roughly the same number of steps. perfect conditions vary by ~4 steps
-  Serial.println("calibrate");
+  //Stepper 1
+  Serial.println("calibrate S1");
   uint16_t steps_to_close_last = 11;
-  while(!(steps_to_close < steps_to_close_last+10) || !(steps_to_close > steps_to_close_last-10)){
-    steps_to_close_last = steps_to_close;
-    movesimple(up,top,S1_pulsetime,1);      //move door all the way up
-    steps_to_close = movesimple(down,bottom,S1_pulsetime,1); //and back down so it starts in closed configuration
-    Serial.println(steps_to_close);
+  while(!(S1_steps_to_close < steps_to_close_last+10) || !(S1_steps_to_close > steps_to_close_last-10)){
+    steps_to_close_last = S1_steps_to_close;
+    movesimple(1,up,top,S1_pulsetime,1);      //move door all the way up
+    S1_steps_to_close = movesimple(1,down,bottom,S1_pulsetime,1); //and back down so it starts in closed configuration
+    Serial.println(S1_steps_to_close);
   }
-  
+  //Stepper 2
+  Serial.println("calibrate S2");
+  steps_to_close_last = 11;
+  while(!(S2_steps_to_close < steps_to_close_last+10) || !(S2_steps_to_close > steps_to_close_last-10)){
+    steps_to_close_last = S2_steps_to_close;
+    movesimple(2,up,top,S2_pulsetime,1);      //move door all the way up
+    S2_steps_to_close = movesimple(2,down,bottom,S1_pulsetime,1); //and back down so it starts in closed configuration
+    Serial.println(S2_steps_to_close);
+  }
+
   //----- start I2C on address 0x10 --------------------------------------------
-  //Wire.begin(0x10);             //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-  //Wire.onRequest(sendData);     //what to do when being talked to
-  //Wire.onReceive(receiveEvent); //what to do when/with data received
+  Wire.begin(0x10);             //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+  Wire.onRequest(sendData);     //what to do when being talked to
+  Wire.onReceive(receiveEvent); //what to do when/with data received
 
   S1_timer = micros();
   S2_timer = micros();
@@ -222,6 +235,21 @@ void loop(){
   //   S2_timer = micros();
   // }
 
+  // while(1){
+  //   Serial.print(digitalRead(IRtx2[0]));
+  //   Serial.print("-");
+  //   Serial.print(digitalRead(IRtx2[1]));
+  //   Serial.print("-");
+  //   Serial.print(digitalRead(IRrx2[0]));
+  //   Serial.print("-");
+  //   Serial.print(digitalRead(IRrx2[1]));
+  //   Serial.print("-");
+  //   Serial.print(digitalRead(IRd2[0]));
+  //   Serial.print("-");
+  //   Serial.print(digitalRead(IRd2[1]));
+  //   Serial.println();
+  //   delay(250);
+  // }
 
   //Debug LEDs
   // Serial.print(digitalRead(IRtx1[0]));
@@ -239,10 +267,10 @@ void loop(){
   // delay(250);
 
   //debug movement
-  movesimple(up,top,300,1);
-  delay(5000);
-  movesimple(down,bottom,300,1);
-  delay(5000);
+  // movesimple(up,top,300,1);
+  // delay(5000);
+  // movesimple(down,bottom,300,1);
+  // delay(5000);
 
 
 
@@ -257,7 +285,7 @@ void loop(){
     Ql_movesimple[3] = Q_movesimple[3];
     
     //down-movement will always be step-based, up-movement, always feedback based
-    steps_last_move = movesimple(Ql_movesimple[1],Ql_movesimple[2],Ql_movesimple[3],!Ql_movesimple[1]); //dir,target,pulsetime,IR based(1) or step(0)
+    S1_steps_last_move = movesimple(1,Ql_movesimple[1],Ql_movesimple[2],Ql_movesimple[3],!Ql_movesimple[1]); //dir,target,pulsetime,IR based(1) or step(0)
     
     if(!Q_movesimple[0]) S1_busy = 0;
   }
@@ -291,94 +319,179 @@ void move(uint8_t stepper, uint16_t pulsetime){
 }
 
 //move door to target position, if door is blocked will retry movement
-uint16_t movesimple(uint8_t direction, uint8_t target, uint16_t pulsetime, uint8_t IR_movement){
-  digitalWrite(S1_dir, direction); //0 open, 1 close
-  
+uint16_t movesimple(uint8_t stepper,uint8_t direction, uint8_t target, uint16_t pulsetime, uint8_t IR_movement){
+
   uint8_t temp_target;        //temporary target to coordinate retries
-  temp_target = target;
   uint8_t done = 0;           //flag if movement is finsihed
   int16_t steps_counted = 0;  //counts steps for step-based movement
-  
-  if(IR_movement){ //IR based movement
-    while(!done){
-      //if(Q_movesimple[0]) done = 1; //stop current operation if new movement command arrives
-      
-      //read IR sensors
-      IR1_state[tx1] = digitalRead(IR1_all[tx1]);
-      IR1_state[tx2] = digitalRead(IR1_all[tx2]);
-      IR1_state[rx1] = digitalRead(IR1_all[rx1]);
-      IR1_state[rx2] = digitalRead(IR1_all[rx2]);
 
-      IR1_state[temp_target] = digitalRead(IR1_all[temp_target]);
-      
-      //if barrier is blocked on moving down, change direction and target to retry target
-      if(direction && (IR1_state[tx1] || IR1_state[tx2] || IR1_state[rx1] || IR1_state[rx2])){
-        direction = up;                  //change dir to up
-        digitalWrite(S1_dir, direction); //0 up, 1 down
-        temp_target = top; //retry target is top <-- can be changed for different target e.g. only one step up, or half open
-      }
-      
-      //if we are at the retry target after a retry and not blocked, move back to original target
-      if(!(IR1_state[temp_target] ^ direction) && (target != temp_target) && (!IR1_state[tx1] && !IR1_state[tx2] && !IR1_state[rx1] && !IR1_state[rx2])){
-        direction = down;                  //change dir to down
-        digitalWrite(S1_dir, direction);   //0 up, 1 down
-        temp_target = target;
-      }
-      
-      //if not at defined target, move
-      if(IR1_state[temp_target] ^ direction){
-        move(1,pulsetime);
-        if(direction == up) steps_counted--;
-        else steps_counted++;
-      }
-      
-      //if we have reached our target we are done
-      if(!(IR1_state[temp_target] ^ direction) && (target == temp_target)) done = 1;
-    }
-  }
-  else{ //Step based movement
-    while(!done){
-      if(Q_movesimple[0]) done = 1; //stop current operation if new movement command
-      //read IR states
-      //read IR sensors
-      IR1_state[tx1] = digitalRead(IR1_all[tx1]);
-      IR1_state[tx2] = digitalRead(IR1_all[tx2]);
-      IR1_state[rx1] = digitalRead(IR1_all[rx1]);
-      IR1_state[rx2] = digitalRead(IR1_all[rx2]);
-      
-      //if barrier is blocked on moving down, change direction
-      if(direction && (IR1_state[tx1] || IR1_state[tx2] || IR1_state[rx1] || IR1_state[rx2])){
-        direction = up;                    //change dir to up
-        digitalWrite(S1_dir, direction);  //0 up, 1 down
-      }
-      //move all the way to the top if IR is blocked
-      //if((steps_counted <= 0) && !IR_state[rx] && !IR_state[tx])
-      //if we are moving up or we have reached the top, change direction to down but only if IR is not blocked
-      if(((direction == up) || (steps_counted <= 0)) && (!IR1_state[tx1] && !IR1_state[tx2] && !IR1_state[rx1] && !IR1_state[rx2])){
-        direction = down;                 //change dir to down
-        digitalWrite(S1_dir, direction); //0 up, 1 down
-      }
-      //move up if blocked and down only if not blocked
-      if((direction == down) || ((direction == up) && !(steps_counted <= 0))){
-        if(direction == up){ //when moving up, move up slower
-          steps_counted--;
-          move(1,5000); //very slow up movement
-        }       
-        else{                //down movement at normal speed
-          steps_counted++;
-          move(1,pulsetime);
+  //stepper 1
+  if(stepper == 1){
+    temp_target = target;
+    digitalWrite(S1_dir, direction); //0 open, 1 close
+    
+    if(IR_movement){ //IR based movement
+      while(!done){
+        //if(Q_movesimple[0]) done = 1; //stop current operation if new movement command arrives
+        
+        //read IR sensors
+        IR1_state[tx1] = digitalRead(IR1_all[tx1]);
+        IR1_state[tx2] = digitalRead(IR1_all[tx2]);
+        IR1_state[rx1] = digitalRead(IR1_all[rx1]);
+        IR1_state[rx2] = digitalRead(IR1_all[rx2]);
+
+        IR1_state[temp_target] = digitalRead(IR1_all[temp_target]);
+        
+        //if barrier is blocked on moving down, change direction and target to retry target
+        if(direction && (IR1_state[tx1] || IR1_state[tx2] || IR1_state[rx1] || IR1_state[rx2])){
+          direction = up;                  //change dir to up
+          digitalWrite(S1_dir, direction); //0 up, 1 down
+          temp_target = top; //retry target is top <-- can be changed for different target e.g. only one step up, or half open
         }
+        
+        //if we are at the retry target after a retry and not blocked, move back to original target
+        if(!(IR1_state[temp_target] ^ direction) && (target != temp_target) && (!IR1_state[tx1] && !IR1_state[tx2] && !IR1_state[rx1] && !IR1_state[rx2])){
+          direction = down;                  //change dir to down
+          digitalWrite(S1_dir, direction);   //0 up, 1 down
+          temp_target = target;
+        }
+        
+        //if not at defined target, move
+        if(IR1_state[temp_target] ^ direction){
+          move(1,pulsetime);
+          if(direction == up) steps_counted--;
+          else steps_counted++;
+        }
+        
+        //if we have reached our target we are done
+        if(!(IR1_state[temp_target] ^ direction) && (target == temp_target)) done = 1;
       }
-      
-      //if we made the number of calibrated steps for down movement, we are done
-      if(steps_counted >= steps_to_close + 5) done = 1;}} //add a few more steps to counter drift
+    }
+    else{ //Step based movement
+      while(!done){
+        if(Q_movesimple[0]) done = 1; //stop current operation if new movement command
+        //read IR sensors
+        IR1_state[tx1] = digitalRead(IR1_all[tx1]);
+        IR1_state[tx2] = digitalRead(IR1_all[tx2]);
+        IR1_state[rx1] = digitalRead(IR1_all[rx1]);
+        IR1_state[rx2] = digitalRead(IR1_all[rx2]);
+        
+        //if barrier is blocked on moving down, change direction
+        if(direction && (IR1_state[tx1] || IR1_state[tx2] || IR1_state[rx1] || IR1_state[rx2])){
+          direction = up;                    //change dir to up
+          digitalWrite(S1_dir, direction);  //0 up, 1 down
+        }
+        //move all the way to the top if IR is blocked
+        //if((steps_counted <= 0) && !IR_state[rx] && !IR_state[tx])
+        //if we are moving up or we have reached the top, change direction to down but only if IR is not blocked
+        if(((direction == up) || (steps_counted <= 0)) && (!IR1_state[tx1] && !IR1_state[tx2] && !IR1_state[rx1] && !IR1_state[rx2])){
+          direction = down;                 //change dir to down
+          digitalWrite(S1_dir, direction); //0 up, 1 down
+        }
+        //move up if blocked and down only if not blocked
+        if((direction == down) || ((direction == up) && !(steps_counted <= 0))){
+          if(direction == up){ //when moving up, move up slower
+            steps_counted--;
+            move(1,5000); //very slow up movement
+          }       
+          else{                //down movement at normal speed
+            steps_counted++;
+            move(1,pulsetime);
+          }
+        }
+        
+        //if we made the number of calibrated steps for down movement, we are done
+        if(steps_counted >= S1_steps_to_close + 5) done = 1;}} //add a few more steps to counter drift
+  }
+  //stepper 2
+  if(stepper == 2){
+    temp_target = target;
+    done = 0; 
+    steps_counted = 0;
+
+    digitalWrite(S2_dir, direction); //0 open, 1 close
+    
+    if(IR_movement){ //IR based movement
+      while(!done){
+        //if(Q_movesimple[0]) done = 1; //stop current operation if new movement command arrives
+
+        //read IR sensors
+        IR2_state[tx1] = digitalRead(IR2_all[tx1]);
+        IR2_state[tx2] = digitalRead(IR2_all[tx2]);
+        IR2_state[rx1] = digitalRead(IR2_all[rx1]);
+        IR2_state[rx2] = digitalRead(IR2_all[rx2]);
+
+        IR2_state[temp_target] = digitalRead(IR2_all[temp_target]);
+        
+        //if barrier is blocked on moving down, change direction and target to retry target
+        if(direction && (IR2_state[tx1] || IR2_state[tx2] || IR2_state[rx1] || IR2_state[rx2])){
+          direction = up;                  //change dir to up
+          digitalWrite(S2_dir, direction); //0 up, 1 down
+          temp_target = top; //retry target is top <-- can be changed for different target e.g. only one step up, or half open
+        }
+        
+        //if we are at the retry target after a retry and not blocked, move back to original target
+        if(!(IR2_state[temp_target] ^ direction) && (target != temp_target) && (!IR2_state[tx1] && !IR2_state[tx2] && !IR2_state[rx1] && !IR2_state[rx2])){
+          direction = down;                  //change dir to down
+          digitalWrite(S2_dir, direction);   //0 up, 1 down
+          temp_target = target;
+        }
+        
+        //if not at defined target, move
+        if(IR2_state[temp_target] ^ direction){
+          move(2,pulsetime);
+          if(direction == up) steps_counted--;
+          else steps_counted++;
+        }
+        
+        //if we have reached our target we are done
+        if(!(IR2_state[temp_target] ^ direction) && (target == temp_target)) done = 1;
+      }
+    }
+    else{ //Step based movement
+      while(!done){
+        if(Q_movesimple[0]) done = 1; //stop current operation if new movement command
+
+        //read IR sensors
+        IR2_state[tx1] = digitalRead(IR2_all[tx1]);
+        IR2_state[tx2] = digitalRead(IR2_all[tx2]);
+        IR2_state[rx1] = digitalRead(IR2_all[rx1]);
+        IR2_state[rx2] = digitalRead(IR2_all[rx2]);
+        
+        //if barrier is blocked on moving down, change direction
+        if(direction && (IR2_state[tx1] || IR2_state[tx2] || IR2_state[rx1] || IR2_state[rx2])){
+          direction = up;                    //change dir to up
+          digitalWrite(S2_dir, direction);   //0 up, 1 down
+        }
+        //move all the way to the top if IR is blocked
+        //if((steps_counted <= 0) && !IR_state[rx] && !IR_state[tx])
+        //if we are moving up or we have reached the top, change direction to down but only if IR is not blocked
+        if(((direction == up) || (steps_counted <= 0)) && (!IR2_state[tx1] && !IR2_state[tx2] && !IR2_state[rx1] && !IR2_state[rx2])){
+          direction = down;                 //change dir to down
+          digitalWrite(S2_dir, direction); //0 up, 1 down
+        }
+        //move up if blocked and down only if not blocked
+        if((direction == down) || ((direction == up) && !(steps_counted <= 0))){
+          if(direction == up){ //when moving up, move up slower
+            steps_counted--;
+            move(2,5000); //very slow up movement
+          }       
+          else{                //down movement at normal speed
+            steps_counted++;
+            move(2,pulsetime);
+          }
+        }
+        
+        //if we made the number of calibrated steps for down movement, we are done
+        if(steps_counted >= S2_steps_to_close + 5) done = 1;}} //add a few more steps to counter drift
+    }
   
   //done with movement
   return steps_counted;
 }
 
 //I2C receive instructions
-void receiveEvent(int bytes_incoming){
+void receiveEvent(size_t bytes_incoming){
   uint8_t inputbuffer[7] = {0,0,0,0,0,0,0};
   uint8_t option;
   
@@ -421,22 +534,24 @@ void receiveEvent(int bytes_incoming){
 //I2C send instructions
 void sendData(){
   uint8_t sendbuffer[2] = {0,0}; //buffer for sending data over I2C
-  //potentially send different datapacks
-  //  if(selectdata == x)
-  //  {sendbuffer1 || sendbuffer2}
   
-  //sendbuffer[0] IR status
-  sendbuffer[0] = sendbuffer[0] | ((IR1_state[tx1] & 0x01) << 0);
-  sendbuffer[0] = sendbuffer[0] | ((IR1_state[tx2] & 0x01) << 1);
-  sendbuffer[0] = sendbuffer[0] | ((IR1_state[rx1] & 0x01) << 2);
-  sendbuffer[0] = sendbuffer[0] | ((IR1_state[rx2] & 0x01) << 3);
-  sendbuffer[0] = sendbuffer[0] | ((IR1_state[top] & 0x01) << 4);
-  sendbuffer[0] = sendbuffer[0] | ((IR1_state[bottom] & 0x01) << 5);
-  //sendbuffer[0] = sendbuffer[0] | ((? & 0x01) << 6);
+  sendbuffer[0] = sendbuffer[0] | (((S1_busy & 0x01) & 0x01) << 0);
+  sendbuffer[0] = sendbuffer[0] | ((IR1_state[tx1] & 0x01) << 1);
+  sendbuffer[0] = sendbuffer[0] | ((IR1_state[tx2] & 0x01) << 2);
+  sendbuffer[0] = sendbuffer[0] | ((IR1_state[rx1] & 0x01) << 3);
+  sendbuffer[0] = sendbuffer[0] | ((IR1_state[rx2] & 0x01) << 4);
+  sendbuffer[0] = sendbuffer[0] | ((IR1_state[top] & 0x01) << 5);
+  sendbuffer[0] = sendbuffer[0] | ((IR1_state[bottom] & 0x01) << 6);
   //sendbuffer[0] = sendbuffer[0] | ((? & 0x01) << 7);
-  
-  sendbuffer[1] = sendbuffer[1] | ((S1_busy & 0x01) << 0);
-  //sendbuffer[1] = sendbuffer[1] | ((S2_busy & 0x01) << 1);  
+
+  sendbuffer[1] = sendbuffer[1] | (((S2_busy & 0x01) & 0x01) << 0);
+  sendbuffer[1] = sendbuffer[1] | ((IR2_state[tx1] & 0x01) << 1);
+  sendbuffer[1] = sendbuffer[1] | ((IR2_state[tx2] & 0x01) << 2);
+  sendbuffer[1] = sendbuffer[1] | ((IR2_state[rx1] & 0x01) << 3);
+  sendbuffer[1] = sendbuffer[1] | ((IR2_state[rx2] & 0x01) << 4);
+  sendbuffer[1] = sendbuffer[1] | ((IR2_state[top] & 0x01) << 5);
+  sendbuffer[1] = sendbuffer[1] | ((IR2_state[bottom] & 0x01) << 6);
+  //sendbuffer[1] = sendbuffer[1] | ((? & 0x01) << 7);
   
   Wire.write(sendbuffer,2);
 }
