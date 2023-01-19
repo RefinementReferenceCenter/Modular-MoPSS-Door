@@ -186,8 +186,12 @@ void setup(){
   // Serial.println(driver1.GCONF(), BIN);
   // Serial.println(driver2.GCONF(), BIN);
 
+  //----- start I2C on address 0x10 --------------------------------------------
+  Wire.begin(0x10);             //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+  Wire.onRequest(sendData);     //what to do when being talked to
+  Wire.onReceive(receiveEvent); //what to do when/with data received
+
   //----- calibrate movements --------------------------------------------------
-  
   //repeat closing calibration until two consecutive moves report roughly the same number of steps. perfect conditions vary by ~4 steps
   S1_busy = 1;
   S2_busy = 1;
@@ -211,11 +215,6 @@ void setup(){
   }
   S1_busy = 0;
   S2_busy = 0;
-  
-  //----- start I2C on address 0x10 --------------------------------------------
-  Wire.begin(0x10);             //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-  Wire.onRequest(sendData);     //what to do when being talked to
-  Wire.onReceive(receiveEvent); //what to do when/with data received
 
   S1_timer = micros();
   S2_timer = micros();
@@ -269,9 +268,17 @@ void loop(){
   // delay(250);
 
   //debug movement
-  // movesimple(up,300,1);
+  // Serial.println("up");
+  // movesimple(0,up,200,1);
+  // delay(1000);
+  // Serial.println("up");
+  // movesimple(0,up,200,1);
   // delay(5000);
-  // movesimple(down,300,1);
+  // Serial.println("down");
+  // movesimple(0,down,200,0);
+  // delay(1000);
+  // Serial.println("down");
+  // movesimple(0,down,200,0);
   // delay(5000);
 
 
