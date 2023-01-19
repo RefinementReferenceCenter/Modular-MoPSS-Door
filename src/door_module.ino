@@ -196,8 +196,8 @@ void setup(){
   uint16_t steps_to_close_last = 11;
   while(!(S1_steps_to_close < steps_to_close_last+10) || !(S1_steps_to_close > steps_to_close_last-10)){
     steps_to_close_last = S1_steps_to_close;
-    movesimple(1,up,top,S1_pulsetime,1);      //move door all the way up
-    S1_steps_to_close = movesimple(1,down,bottom,S1_pulsetime,1); //and back down so it starts in closed configuration
+    movesimple(1,up,S1_pulsetime,1);      //move door all the way up
+    S1_steps_to_close = movesimple(1,down,S1_pulsetime,1); //and back down so it starts in closed configuration
     Serial.println(S1_steps_to_close);
   }
   //Stepper 2
@@ -205,8 +205,8 @@ void setup(){
   steps_to_close_last = 11;
   while(!(S2_steps_to_close < steps_to_close_last+10) || !(S2_steps_to_close > steps_to_close_last-10)){
     steps_to_close_last = S2_steps_to_close;
-    movesimple(2,up,top,S2_pulsetime,1);      //move door all the way up
-    S2_steps_to_close = movesimple(2,down,bottom,S1_pulsetime,1); //and back down so it starts in closed configuration
+    movesimple(2,up,S2_pulsetime,1);      //move door all the way up
+    S2_steps_to_close = movesimple(2,down,S1_pulsetime,1); //and back down so it starts in closed configuration
     Serial.println(S2_steps_to_close);
   }
 
@@ -267,11 +267,10 @@ void loop(){
   // delay(250);
 
   //debug movement
-  // movesimple(up,top,300,1);
+  // movesimple(up,300,1);
   // delay(5000);
-  // movesimple(down,bottom,300,1);
+  // movesimple(down,300,1);
   // delay(5000);
-
 
 
   //------ perform queued move -------------------------------------------------
@@ -285,17 +284,11 @@ void loop(){
     Ql_movesimple[3] = Q_movesimple[3];
     
     //down-movement will always be step-based, up-movement, always feedback based
-    S1_steps_last_move = movesimple(1,Ql_movesimple[1],Ql_movesimple[2],Ql_movesimple[3],!Ql_movesimple[1]); //dir,target,pulsetime,IR based(1) or step(0)
+    S1_steps_last_move = movesimple(1,Ql_movesimple[1],Ql_movesimple[2],!Ql_movesimple[1]); //stepper,dir,pulsetime,IR based(1) or step(0)
     
     if(!Q_movesimple[0]) S1_busy = 0;
   }
     
-  // //------ perform queued vibration of door ------------------------------------
-  // if(Q_vibrate[0]){
-  //   //Serial.println("Qvib");
-  //   Q_vibrate[0] = 0; //clear queued vibrate flag
-  //   S1_busy = 0;
-  // }
 } //end of loop
 
 //##############################################################################
@@ -319,11 +312,15 @@ void move(uint8_t stepper, uint16_t pulsetime){
 }
 
 //move door to target position, if door is blocked will retry movement
-uint16_t movesimple(uint8_t stepper,uint8_t direction, uint8_t target, uint16_t pulsetime, uint8_t IR_movement){
+uint16_t movesimple(uint8_t stepper,uint8_t direction, uint16_t pulsetime, uint8_t IR_movement){
 
+  uint8_t target;             //IR barrier target (top or bottom)
   uint8_t temp_target;        //temporary target to coordinate retries
-  uint8_t done = 0;           //flag if movement is finsihed
+  uint8_t done = 0;           //flag if movement is finished
   int16_t steps_counted = 0;  //counts steps for step-based movement
+
+  if(direction == up) target = top;
+  if(direction == down) target = bottom;
 
   //stepper 1
   if(stepper == 1){
@@ -381,8 +378,6 @@ uint16_t movesimple(uint8_t stepper,uint8_t direction, uint8_t target, uint16_t 
           direction = up;                    //change dir to up
           digitalWrite(S1_dir, direction);  //0 up, 1 down
         }
-        //move all the way to the top if IR is blocked
-        //if((steps_counted <= 0) && !IR_state[rx] && !IR_state[tx])
         //if we are moving up or we have reached the top, change direction to down but only if IR is not blocked
         if(((direction == up) || (steps_counted <= 0)) && (!IR1_state[tx1] && !IR1_state[tx2] && !IR1_state[rx1] && !IR1_state[rx2])){
           direction = down;                 //change dir to down
@@ -401,7 +396,9 @@ uint16_t movesimple(uint8_t stepper,uint8_t direction, uint8_t target, uint16_t 
         }
         
         //if we made the number of calibrated steps for down movement, we are done
-        if(steps_counted >= S1_steps_to_close + 5) done = 1;}} //add a few more steps to counter drift
+        if(steps_counted >= S1_steps_to_close + 5) done = 1; //add a few more steps to counter drift
+      }
+    } 
   }
   //stepper 2
   if(stepper == 2){
@@ -463,8 +460,6 @@ uint16_t movesimple(uint8_t stepper,uint8_t direction, uint8_t target, uint16_t 
           direction = up;                    //change dir to up
           digitalWrite(S2_dir, direction);   //0 up, 1 down
         }
-        //move all the way to the top if IR is blocked
-        //if((steps_counted <= 0) && !IR_state[rx] && !IR_state[tx])
         //if we are moving up or we have reached the top, change direction to down but only if IR is not blocked
         if(((direction == up) || (steps_counted <= 0)) && (!IR2_state[tx1] && !IR2_state[tx2] && !IR2_state[rx1] && !IR2_state[rx2])){
           direction = down;                 //change dir to down
@@ -483,26 +478,28 @@ uint16_t movesimple(uint8_t stepper,uint8_t direction, uint8_t target, uint16_t 
         }
         
         //if we made the number of calibrated steps for down movement, we are done
-        if(steps_counted >= S2_steps_to_close + 5) done = 1;}} //add a few more steps to counter drift
+        if(steps_counted >= S2_steps_to_close + 5) done = 1; //add a few more steps to counter drift
     }
-  
+  }
+}
+
   //done with movement
   return steps_counted;
 }
 
 //I2C receive instructions
 void receiveEvent(size_t bytes_incoming){
-  uint8_t inputbuffer[7] = {0,0,0,0,0,0,0};
+  uint8_t rcv[7] = {0,0,0,0,0,0,0};
   uint8_t option;
   
   //collect bytes from I2C
   for(uint8_t i = 0; i < bytes_incoming; i++){
     uint8_t c = Wire.read();
-    inputbuffer[i] = c;
+    rcv[i] = c;
   }
   
   //----- process received data -----
-  option = inputbuffer[0];
+  option = rcv[0];
   
   if(option == 0){ //set config
     //write config for various door functions
@@ -517,11 +514,10 @@ void receiveEvent(size_t bytes_incoming){
   if(option == 1){}
   
   if(option == 2){ //move door with simple feedback
-    Q_movesimple[1] = inputbuffer[1];                           //direction
-    Q_movesimple[2] = inputbuffer[2];                           //target
-    Q_movesimple[3] = 0;                                       //clear, because bit-shifting
-    Q_movesimple[3] = Q_movesimple[3] | inputbuffer[4];         //pulsetime
-    Q_movesimple[3] = (Q_movesimple[3] << 8) | inputbuffer[3];  //pulsetime
+    Q_movesimple[1] = rcv[1];                           //direction
+    Q_movesimple[2] = 0;                                //clear, because bit-shifting
+    Q_movesimple[2] = Q_movesimple[2] | rcv[3];         //pulsetime
+    Q_movesimple[2] = (Q_movesimple[2] << 8) | rcv[2];  //pulsetime
     
     Q_movesimple[0] = 1; //queues movement
     newcommand = 1;
