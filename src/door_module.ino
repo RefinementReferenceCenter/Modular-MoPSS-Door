@@ -60,7 +60,6 @@ const uint8_t S1_microsteps = 32;
 volatile uint8_t S1_busy = 0; //Is stepper moving
 uint16_t S1_pulsetime = 250;  //global speed, for calibration movement
 int16_t S1_steps_to_close;       //holds the number of steps needed to go from open to close position of the door
-int16_t S1_steps_last_move;      //holds current position in steps when move is interrupted
 
 uint8_t S1_move = 0;      //flag to make stepper move
 uint32_t S1_timer = 0;        //time to the next step pulse
@@ -76,7 +75,6 @@ const uint8_t S2_microsteps = 32;
 volatile uint8_t S2_busy = 0;      //Is stepper moving
 uint16_t S2_pulsetime = 250;  //global speed, for calibration movement
 int16_t S2_steps_to_close;       //holds the number of steps needed to go from open to close position of the door
-int16_t S2_steps_last_move;      //holds current position in steps when move is interrupted
 
 uint32_t S2_timer = 0;      //time to the next step pulse
 uint16_t S2_next_pulse = 0; //how long to wait for the next stepping pulse
@@ -191,13 +189,15 @@ void setup(){
   //----- calibrate movements --------------------------------------------------
   
   //repeat closing calibration until two consecutive moves report roughly the same number of steps. perfect conditions vary by ~4 steps
+  S1_busy = 1;
+  S2_busy = 1;
   //Stepper 1
   Serial.println("calibrate S1");
   uint16_t steps_to_close_last = 11;
   while(!(S1_steps_to_close < steps_to_close_last+10) || !(S1_steps_to_close > steps_to_close_last-10)){
     steps_to_close_last = S1_steps_to_close;
-    movesimple(1,up,S1_pulsetime,1);      //move door all the way up
-    S1_steps_to_close = movesimple(1,down,S1_pulsetime,1); //and back down so it starts in closed configuration
+    movesimple(0,up,S1_pulsetime,1);      //move door all the way up
+    S1_steps_to_close = movesimple(0,down,S1_pulsetime,1); //and back down so it starts in closed configuration
     Serial.println(S1_steps_to_close);
   }
   //Stepper 2
@@ -205,11 +205,13 @@ void setup(){
   steps_to_close_last = 11;
   while(!(S2_steps_to_close < steps_to_close_last+10) || !(S2_steps_to_close > steps_to_close_last-10)){
     steps_to_close_last = S2_steps_to_close;
-    movesimple(2,up,S2_pulsetime,1);      //move door all the way up
-    S2_steps_to_close = movesimple(2,down,S1_pulsetime,1); //and back down so it starts in closed configuration
+    movesimple(1,up,S2_pulsetime,1);      //move door all the way up
+    S2_steps_to_close = movesimple(1,down,S1_pulsetime,1); //and back down so it starts in closed configuration
     Serial.println(S2_steps_to_close);
   }
-
+  S1_busy = 0;
+  S2_busy = 0;
+  
   //----- start I2C on address 0x10 --------------------------------------------
   Wire.begin(0x10);             //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
   Wire.onRequest(sendData);     //what to do when being talked to
@@ -275,18 +277,22 @@ void loop(){
 
   //------ perform queued move -------------------------------------------------
   if(Q_movesimple[0]){
-    S1_busy = 1; //mark module busy as soon as movement command appears
-    Q_movesimple[0] = 0; //clear queued move flag
     //copy to new variable so it wont get overwritten by i2c receive ("Queue local")
     uint16_t Ql_movesimple[4] = {0,0,0,0};
     Ql_movesimple[1] = Q_movesimple[1];
     Ql_movesimple[2] = Q_movesimple[2];
     Ql_movesimple[3] = Q_movesimple[3];
     
+    Q_movesimple[0] = 0; //clear queued move flag
+
+    if(Q_movesimple[3] == 0) S1_busy = 1; //mark stepper busy
+    if(Q_movesimple[3] == 1) S2_busy = 1; //mark stepper busy
+
     //down-movement will always be step-based, up-movement, always feedback based
-    S1_steps_last_move = movesimple(1,Ql_movesimple[1],Ql_movesimple[2],!Ql_movesimple[1]); //stepper,dir,pulsetime,IR based(1) or step(0)
+    movesimple(Ql_movesimple[3],Ql_movesimple[1],Ql_movesimple[2],!Ql_movesimple[1]); //stepper,dir,pulsetime,IR based(1) or step(0)
     
-    if(!Q_movesimple[0]) S1_busy = 0;
+    S1_busy = 0; //both at once since two movement commands at the same time are not yet supported
+    S2_busy = 0;
   }
     
 } //end of loop
@@ -323,7 +329,7 @@ uint16_t movesimple(uint8_t stepper,uint8_t direction, uint16_t pulsetime, uint8
   if(direction == down) target = bottom;
 
   //stepper 1
-  if(stepper == 1){
+  if(stepper == 0){
     temp_target = target;
     digitalWrite(S1_dir, direction); //0 open, 1 close
     
@@ -401,7 +407,7 @@ uint16_t movesimple(uint8_t stepper,uint8_t direction, uint16_t pulsetime, uint8
     } 
   }
   //stepper 2
-  if(stepper == 2){
+  if(stepper == 1){
     temp_target = target;
     done = 0; 
     steps_counted = 0;
@@ -518,7 +524,8 @@ void receiveEvent(size_t bytes_incoming){
     Q_movesimple[2] = 0;                                //clear, because bit-shifting
     Q_movesimple[2] = Q_movesimple[2] | rcv[3];         //pulsetime
     Q_movesimple[2] = (Q_movesimple[2] << 8) | rcv[2];  //pulsetime
-    
+    Q_movesimple[3] = rcv[4];                           //which door
+
     Q_movesimple[0] = 1; //queues movement
     newcommand = 1;
   }
