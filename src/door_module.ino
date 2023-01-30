@@ -204,12 +204,12 @@ void setup(){
 void loop(){
 
   //debugging
-  if(millis() - debugtimer >= 500){
-    debugtimer = millis();
-    Serial.print(S1_steps_counted);
-    Serial.print(" | ");
-    Serial.println(S2_steps_counted);
-  }
+  // if(millis() - debugtimer >= 500){
+  //   debugtimer = millis();
+  //   Serial.print(S1_steps_counted);
+  //   Serial.print(" | ");
+  //   Serial.println(S2_steps_counted);
+  // }
 
   //read IR barrier status
   for(uint8_t i = 0;i < 6;i ++){
@@ -387,7 +387,7 @@ void loop(){
 //#####   F U N C T I O N S   ##################################################
 //##############################################################################
 
-//move one microstep
+//move one microstep -----------------------------------------------------------
 void move(uint8_t stepper, uint16_t pulsetime){ 
   if(stepper == 1){
     digitalToggleFast(S1_step);
@@ -399,9 +399,8 @@ void move(uint8_t stepper, uint16_t pulsetime){
   }
 }
 
-//record number of steps needed to close/open door
+//record number of steps needed to close/open door -----------------------------
 uint16_t calibrate(uint8_t stepper,uint8_t direction, uint16_t pulsetime){
-
   uint8_t target;             //IR barrier target (top or bottom)
   uint8_t temp_target;        //temporary target to coordinate retries
   uint8_t done = 0;           //flag if movement is finished
@@ -487,7 +486,7 @@ uint16_t calibrate(uint8_t stepper,uint8_t direction, uint16_t pulsetime){
   return steps_counted;
 }
 
-//I2C receive instructions
+//I2C receive instructions -----------------------------------------------------
 void receiveEvent(size_t bytes_incoming){
   uint8_t rcv[7] = {0,0,0,0,0,0,0};
   uint8_t option;
@@ -497,7 +496,7 @@ void receiveEvent(size_t bytes_incoming){
     uint8_t c = Wire.read();
     rcv[i] = c;
   }
-  //----- process received data -----
+  //process received data
   option = rcv[0];
   
   if(option == 0){ //set config
@@ -523,7 +522,7 @@ void receiveEvent(size_t bytes_incoming){
   if(option == 4){}
 }            
 
-//I2C send instructions
+//I2C send instructions --------------------------------------------------------
 void sendData(){
   uint8_t sendbuffer[2] = {0,0}; //buffer for sending data over I2C
   
